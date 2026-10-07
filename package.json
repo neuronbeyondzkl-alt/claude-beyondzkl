@@ -1,0 +1,16 @@
+{
+  "name": "neuroplasticity-particles",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NEUROPLASTICITY — 神经可塑性粒子叙事网页（Three.js 粒子形变 + Web Audio 实时合成配乐）",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=assets/app.js",
+    "dev": "esbuild src/main.js --bundle --format=iife --target=es2020 --outfile=assets/app.js --watch",
+    "serve": "python3 -m http.server 8080",
+    "build:single": "npm run build && node scripts/build-artifact.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "three": "0.186.1"
+  }
+}

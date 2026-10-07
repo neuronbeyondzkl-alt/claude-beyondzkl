@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--HEAD-START-->
+<title>NEUROPLASTICITY 神经可塑性</title>
+<meta name="description" content="神经可塑性粒子叙事网页：从大脑、神经元与胶质细胞、突触、神经束、神经环路、神经网络到认知与行为，七个层级的低饱和蓝荧光粒子形变，配合实时合成的史诗配乐。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2303060b'/%3E%3Ccircle cx='16' cy='16' r='5' fill='none' stroke='%239fbdda' stroke-width='2'/%3E%3Cpath d='M16 3v8M16 21v8M3 16h8M21 16h8' stroke='%236c9ac4' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bebas+Neue&family=Michroma&family=Russo+One&family=Syncopate:wght@700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;700&display=swap">
+<!--CSS-->
+<link rel="stylesheet" href="assets/style.css">
+<!--/CSS-->
+<!--HEAD-END-->
+</head>
+<body>
+<!--BODY-START-->
+<canvas id="gl" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+
+<header class="topbar">
+  <a class="brand" href="#hero" aria-label="回到首页">
+    <span class="brand-mark neon" aria-hidden="true">NP</span>
+    <span class="brand-text">神经可塑性 · 粒子叙事</span>
+  </a>
+  <div class="top-actions">
+    <button id="soundBtn" class="pill" type="button" aria-pressed="false">
+      <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="label">开启配乐</span>
+    </button>
+    <button id="panelBtn" class="pill" type="button" aria-expanded="false" aria-controls="panel">荧光调节</button>
+  </div>
+</header>
+
+<aside id="panel" class="panel" hidden aria-label="荧光控制台">
+  <div class="panel-head">
+    <h2>荧光控制台</h2>
+    <button id="panelClose" class="panel-close" type="button" aria-label="关闭控制台">×</button>
+  </div>
+  <div class="field">
+    <div class="field-row"><label for="glow">荧光强度</label><output id="glowOut" for="glow">100%</output></div>
+    <input id="glow" type="range" min="0" max="200" step="1" value="100">
+    <div class="presets" role="group" aria-label="荧光预设">
+      <button type="button" data-glow="35">微光</button>
+      <button type="button" data-glow="100">标准</button>
+      <button type="button" data-glow="175">炽燃</button>
+    </div>
+    <small>同时调节粒子亮度、光晕扩散、Bloom 辉光与标题霓虹。</small>
+  </div>
+  <div class="field">
+    <div class="field-row"><label for="accent">色彩丰富度</label><output id="accentOut" for="accent">100%</output></div>
+    <input id="accent" type="range" min="0" max="100" step="1" value="100">
+    <small>调到 0% 时，所有点缀色收回为低饱和蓝。</small>
+  </div>
+  <div class="field">
+    <div class="field-row"><label for="psize">粒子尺寸</label><output id="psizeOut" for="psize">100%</output></div>
+    <input id="psize" type="range" min="50" max="160" step="1" value="100">
+  </div>
+  <div class="field">
+    <div class="field-row"><label for="vol">配乐音量</label><output id="volOut" for="vol">70%</output></div>
+    <input id="vol" type="range" min="0" max="100" step="1" value="70">
+  </div>
+  <div class="field">
+    <label for="font">英文标题字体</label>
+    <select id="font">
+      <option value="Anton">Anton（默认）</option>
+      <option value="Bebas Neue">Bebas Neue</option>
+      <option value="Archivo Black">Archivo Black</option>
+      <option value="Russo One">Russo One</option>
+      <option value="Syncopate">Syncopate</option>
+      <option value="Michroma">Michroma</option>
+    </select>
+    <small>原站字体未能直接核实，可在此切换比对。</small>
+  </div>
+</aside>
+
+<nav aria-label="层级导航"><ol class="dots" id="dots"></ol></nav>
+
+<div class="hud" aria-hidden="true">
+  <span class="hud-idx" id="hudIdx">00 / 07</span>
+  <span class="hud-bar"><i id="hudBar"></i></span>
+  <span id="hudName">首页 · 神经可塑性</span>
+</div>
+
+<main id="story">
+  <section class="sec hero is-active" id="hero" data-side="center" data-label="首页" data-scale="神经可塑性">
+    <div class="sec-inner">
+      <p class="kicker reveal">神经科学 · 从分子到行为的七个层级</p>
+      <h1 class="title neon fit" data-size="hero"><span class="line">Neuroplasticity</span></h1>
+      <p class="desc reveal">神经可塑性，是大脑根据经验、学习与损伤，持续改写自身结构与功能的能力。它让你学会新技能，也让受损的大脑重新找回失去的功能。</p>
+      <div class="hero-cta reveal">
+        <button id="heroPlay" class="pill cta" type="button">▶ 点燃配乐</button>
+        <span class="hint">向下滚动 · 进入第一层</span>
+      </div>
+      <p class="loading reveal" id="loading" role="status">正在生成神经粒子…</p>
+    </div>
+  </section>
+
+  <section class="sec" id="brain" data-side="left" data-label="大脑" data-scale="约 15 厘米 · 1.4 千克">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">01 / 07</span><span>层级 · 大脑</span><span class="scale">尺度 ≈ 15 厘米 · 1.4 千克</span></p>
+      <h2 class="title neon fit"><span class="line">Brain</span></h2>
+      <h3 class="zh-title reveal">被经验雕刻的器官</h3>
+      <p class="desc reveal">约 860 亿个神经元与数量相当的胶质细胞构成了大脑。它只占体重的 2%，却消耗约 20% 的能量。它的形状并非一成不变：成年人练习杂耍三个月，颞中区与顶内沟的灰质会暂时增加；伦敦出租车司机的海马后部比常人更大，且与驾龄正相关。</p>
+      <ul class="chips reveal"><li>灰质重塑</li><li>宏观结构可塑性</li><li>经验依赖</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Azevedo et al., 2009 · J Comp Neurol　Draganski et al., 2004 · Nature　Maguire et al., 2000 · PNAS</p>
+    </div>
+  </section>
+
+  <section class="sec" id="neuron" data-side="right" data-label="神经元与胶质细胞" data-scale="胞体 4–100 微米">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">02 / 07</span><span>层级 · 神经元与胶质细胞</span><span class="scale">尺度 ≈ 4–100 微米（胞体）</span></p>
+      <h2 class="title neon fit"><span class="line">Neuron</span><span class="line" data-follow="0.46">&amp; Glia</span></h2>
+      <h3 class="zh-title reveal">放电的主角与沉默的建筑师</h3>
+      <p class="desc reveal">神经元用树突接收信号，在胞体整合，再经轴突把动作电位传出去。胶质细胞同样参与可塑性：星形胶质细胞包绕突触、调节递质，构成三方突触；少突胶质细胞为轴突包上髓鞘，学习新的运动技能需要新生髓鞘参与。成年人海马能否持续生成新神经元，至今仍有争议。</p>
+      <ul class="chips reveal"><li>三方突触</li><li>活动依赖性髓鞘化</li><li>成体神经发生（争议）</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Araque et al., 1999 · Trends Neurosci　McKenzie et al., 2014 · Science　Sorrells et al., 2018 · Nature</p>
+    </div>
+  </section>
+
+  <section class="sec" id="synapse" data-side="left" data-label="突触" data-scale="突触间隙约 20 纳米">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">03 / 07</span><span>层级 · 突触</span><span class="scale">尺度 ≈ 20 纳米（突触间隙）</span></p>
+      <h2 class="title neon fit"><span class="line">Synapse</span></h2>
+      <h3 class="zh-title reveal">可塑性的核心战场</h3>
+      <p class="desc reveal">Hebb 在 1949 年提出：反复共同激活的神经元，彼此的连接会被加强。1973 年，Bliss 与 Lømo 在兔海马中证实，高频刺激能让突触传递长时间增强，即长时程增强（LTP）。NMDA 受体在这里充当巧合检测器：突触前后同时活跃，Ca²⁺ 才会内流，触发 AMPA 受体插入突触后膜，树突棘随之增大，甚至长出新的树突棘。</p>
+      <ul class="chips reveal"><li>LTP / LTD</li><li>NMDA 受体</li><li>树突棘重塑</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Hebb, 1949 · The Organization of Behavior　Bliss &amp; Lømo, 1973 · J Physiol　Matsuzaki et al., 2004 · Nature</p>
+    </div>
+  </section>
+
+  <section class="sec" id="tracts" data-side="right" data-label="神经束" data-scale="轴突 1 微米 · 纤维束 10 厘米">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">04 / 07</span><span>层级 · 神经束</span><span class="scale">尺度 ≈ 1 微米（单根轴突）至 10 厘米（纤维束）</span></p>
+      <h2 class="title neon fit"><span class="line">Tracts</span></h2>
+      <h3 class="zh-title reveal">白质高速公路</h3>
+      <p class="desc reveal">数以百万计的轴突成束穿行，构成胼胝体、弓状束、皮质脊髓束等白质通路。白质同样会被训练改变：弥散张量成像（DTI）显示，学习杂耍六周后，右侧顶内沟下方白质的各向异性分数（FA）升高。髓鞘厚度的调整，还会改变信号的传导速度与同步性。</p>
+      <ul class="chips reveal"><li>白质可塑性</li><li>DTI 纤维追踪</li><li>传导速度调节</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Scholz et al., 2009 · Nat Neurosci　Fields, 2015 · Nat Rev Neurosci</p>
+    </div>
+  </section>
+
+  <section class="sec" id="circuit" data-side="left" data-label="神经环路" data-scale="毫米级">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">05 / 07</span><span>层级 · 神经环路</span><span class="scale">尺度 ≈ 毫米级</span></p>
+      <h2 class="title neon fit"><span class="line">Circuit</span></h2>
+      <h3 class="zh-title reveal">海马三突触环路</h3>
+      <p class="desc reveal">信号从内嗅皮层出发，经穿通通路到达齿状回，由苔藓纤维传向 CA3，再经 Schaffer 侧支抵达 CA1，最终回到内嗅皮层，形成闭环。LTP 最早正是在这条环路上发现的。在环路层面，可塑性会重新分配连接权重，恐惧记忆、空间导航和习惯的形成都依赖这种调整；一段记忆储存在一群分布式的印迹细胞中。</p>
+      <ul class="chips reveal"><li>三突触环路</li><li>记忆印迹 Engram</li><li>兴奋 / 抑制平衡</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Bliss &amp; Lømo, 1973 · J Physiol　Liu et al., 2012 · Nature</p>
+    </div>
+  </section>
+
+  <section class="sec" id="network" data-side="right" data-label="神经网络" data-scale="全脑">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">06 / 07</span><span>层级 · 神经网络</span><span class="scale">尺度 ≈ 全脑</span></p>
+      <h2 class="title neon fit"><span class="line">Network</span></h2>
+      <h3 class="zh-title reveal">连接组：小世界与富人俱乐部</h3>
+      <p class="desc reveal">全脑网络兼具局部高度聚集和全局路径短的小世界特征。少数枢纽脑区彼此紧密互联，组成富人俱乐部，负责跨模块的信息整合。学习与康复都会重组功能连接：卒中后，未受损的脑区可以逐步承担失去的功能，这是康复训练的神经基础。</p>
+      <ul class="chips reveal"><li>连接组 Connectome</li><li>小世界网络</li><li>功能重组</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Watts &amp; Strogatz, 1998 · Nature　van den Heuvel &amp; Sporns, 2011 · J Neurosci　Murphy &amp; Corbett, 2009 · Nat Rev Neurosci</p>
+    </div>
+  </section>
+
+  <section class="sec" id="behavior" data-side="left" data-label="认知与行为" data-scale="毫秒到一生">
+    <div class="sec-inner">
+      <p class="kicker reveal"><span class="num">07 / 07</span><span>层级 · 认知与行为</span><span class="scale">尺度 ≈ 毫秒到一生</span></p>
+      <h2 class="title neon fit"><span class="line">Cognition</span><span class="line" data-follow="0.5">&amp; Behavior</span></h2>
+      <h3 class="zh-title reveal">所有层级，汇成你的改变</h3>
+      <p class="desc reveal">分子、突触、环路和网络层面的重塑，最终表现为你能感受到的变化：掌握一项新技能，养成一个新习惯，或者从损伤中恢复。刻意练习、充足睡眠、规律运动和新奇体验都能促进可塑性。一项随机对照试验显示，老年人坚持一年有氧运动后，海马体积增加约 2%，并伴随血清 BDNF 水平升高。</p>
+      <ul class="chips reveal"><li>刻意练习</li><li>睡眠巩固</li><li>BDNF</li></ul>
+      <p class="cite reveal"><b>循证来源</b>　Erickson et al., 2011 · PNAS　Walker &amp; Stickgold, 2006 · Annu Rev Psychol</p>
+    </div>
+  </section>
+
+  <section class="sec outro" id="outro" data-side="center" data-label="终身可塑" data-scale="永不定型">
+    <div class="sec-inner">
+      <p class="kicker reveal">终身可塑</p>
+      <h2 class="title neon fit" data-size="outro"><span class="line">Keep Rewiring</span></h2>
+      <p class="desc reveal">大脑始终可以继续改变。每一次重复、每一次挑战、每一次坚持，都在改写你的神经连接。</p>
+      <div class="hero-cta reveal"><a class="pill" href="#hero">↑ 回到起点</a></div>
+      <p class="credits reveal">粒子：Three.js / WebGL 程序化生成　配乐：Web Audio 实时合成的原创曲《REWIRE》　配色：Loyel 渐变蓝<br>内容为科普性质，不构成医疗建议。</p>
+    </div>
+  </section>
+</main>
+
+<noscript><p style="position:fixed;bottom:16px;left:16px;z-index:50;color:#ccdbeb">需要启用 JavaScript 才能看到粒子与配乐。</p></noscript>
+<!--JS-->
+<script src="assets/app.js" defer></script>
+<!--/JS-->
+<!--BODY-END-->
+</body>
+</html>
