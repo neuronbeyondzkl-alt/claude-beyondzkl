@@ -1,0 +1,15 @@
+{
+  "name": "into-the-deep",
+  "version": "1.0.0",
+  "private": true,
+  "description": "海洋生物粒子网页：程序化粒子形体 + GLSL 变形 + Web Audio 生成配乐",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes http-server -p 8080 -c-1 .",
+    "vendor": "esbuild tools/three-entry.js --bundle --format=esm --minify --legal-comments=eof --outfile=assets/js/vendor/three.bundle.min.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "three": "0.186.1"
+  }
+}
