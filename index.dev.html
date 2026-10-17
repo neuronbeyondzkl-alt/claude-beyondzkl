@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>深蓝潜行</title>
+<!--BUILD-NOTE-->
+<meta name="description" content="由数万颗低饱和荧光粒子构成的海洋生物图鉴：从海面下潜到 4000 米深渊，滚动页面，粒子依次聚散成珊瑚、海星、海马、鲎、海龟、魔鬼鱼、鲨鱼、蓝鲸、水母、灯笼鱼与鮟鱇。">
+<meta name="theme-color" content="#05070A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cdefs%3E%3CradialGradient id=%27g%27%3E%3Cstop offset=%270%27 stop-color=%27%23E8EEF6%27/%3E%3Cstop offset=%270.45%27 stop-color=%27%236C9AC4%27/%3E%3Cstop offset=%271%27 stop-color=%27%23263B54%27 stop-opacity=%270%27/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%2305070A%27/%3E%3Ccircle cx=%2732%27 cy=%2732%27 r=%2724%27 fill=%27url(%23g)%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div id="loader" role="status" aria-live="polite">
+  <div class="loader__inner">
+    <p class="loader__title neon">Into the Deep</p>
+    <div class="loader__track"><span id="loadBar"></span></div>
+    <p id="loadText" class="loader__text">正在准备粒子</p>
+  </div>
+</div>
+
+<canvas id="gl" aria-hidden="true"></canvas>
+
+<header class="hud-top">
+  <a class="brand" href="#top" aria-label="深蓝潜行，回到顶部">
+    <span class="brand__cn">深蓝潜行</span>
+    <span class="brand__en">INTO THE DEEP</span>
+  </a>
+  <div class="hud-actions">
+    <button id="tuneBtn" class="pill pill--tune" type="button" aria-expanded="false" aria-controls="tunePanel">
+      <span class="tune-ico" aria-hidden="true"></span><span>荧光调节</span>
+    </button>
+    <button id="sound" class="pill" type="button" aria-pressed="false" aria-label="开启或关闭配乐">
+      <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="label">配乐 关</span>
+    </button>
+  </div>
+</header>
+
+<section id="tunePanel" class="tune" aria-label="荧光与音量调节" hidden>
+  <div class="tune__head">
+    <p class="tune__title">荧光调节</p>
+    <button id="tuneClose" class="tune__close" type="button">收起</button>
+  </div>
+  <label class="tune__row" for="glow">
+    <span class="tune__name">粒子荧光</span>
+    <input id="glow" type="range" min="0" max="100" step="1" value="65">
+    <output id="glowOut" for="glow">65%</output>
+  </label>
+  <label class="tune__row" for="tglow">
+    <span class="tune__name">标题荧光</span>
+    <input id="tglow" type="range" min="0" max="100" step="1" value="60">
+    <output id="tglowOut" for="tglow">60%</output>
+  </label>
+  <label class="tune__row" for="vol">
+    <span class="tune__name">配乐音量</span>
+    <input id="vol" type="range" min="0" max="100" step="1" value="70">
+    <output id="volOut" for="vol">70%</output>
+  </label>
+  <p class="tune__tip">粒子荧光调节生物粒子的光晕与辉光，标题荧光调节英文标题外层的蓝色荧光。设置会自动记住。</p>
+</section>
+
+<div id="zoneBanner" class="zone-banner" aria-live="polite">
+  <span class="zb-line" aria-hidden="true"></span>
+  <p class="zb-kicker">下潜进入</p>
+  <p class="zb-en neon">Mesopelagic Zone</p>
+  <p class="zb-cn">弱光层</p>
+  <p class="zb-meta"><span class="zb-range">200 – 1,000 m</span><span class="zb-note">只剩微弱的蓝光</span></p>
+  <span class="zb-line" aria-hidden="true"></span>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="cursorRing" class="cursor-ring" aria-hidden="true"></div>
+<div id="cursorDot" class="cursor-dot" aria-hidden="true"></div>
+
+<aside class="gauge" aria-label="当前下潜深度">
+  <div class="gauge__track"><span id="depthFill"></span></div>
+  <div class="gauge__read">
+    <span class="gauge__label">下潜深度</span>
+    <span class="gauge__num"><span id="depthVal">0</span><small> m</small></span>
+    <span id="depthZone" class="gauge__zone">透光层 · EPIPELAGIC</span>
+  </div>
+</aside>
+
+<div class="pager" aria-hidden="true"><span id="secIdx">00</span><span class="pager__sep">/ 11</span><span id="secName">海面</span></div>
+
+<main id="top">
+
+  <section class="sec hero" data-name="海面" data-side="left">
+    <div class="hero__inner">
+      <p class="eyebrow reveal">海洋生物粒子图鉴 · 0 → 4,000 m</p>
+      <h1 class="neon neon--hero reveal"><span>Into</span> <span>the Deep</span></h1>
+      <p class="lede reveal">四万颗低饱和荧光粒子，从夜海里的“蓝眼泪”出发，一路下潜到四千米深的无光层。向下滚动，粒子会依次聚散成十一种海洋生命。</p>
+      <div class="cta reveal">
+        <button id="start" class="btn btn--primary" type="button">开启配乐，开始下潜</button>
+        <button id="silent" class="btn btn--ghost" type="button">静音浏览</button>
+      </div>
+      <p class="hint reveal"><span class="hint__line" aria-hidden="true"></span>划过画面会搅起发光的尾流 · 点击发出声呐脉冲 · 右上角「荧光调节」</p>
+    </div>
+  </section>
+
+  <section class="sec creature" data-name="珊瑚" data-side="left">
+    <span class="bignum" aria-hidden="true">01</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">01 / 11</span><span>透光层</span><span>下潜 10 m</span></p>
+      <h2 class="neon reveal">Coral</h2>
+      <p class="latin reveal">Scleractinia</p>
+      <h3 class="cn reveal">珊瑚</h3>
+      <p class="desc reveal">珊瑚看起来像岩石或植物，其实是成千上万只微小珊瑚虫组成的群体动物。造礁珊瑚体内共生着虫黄藻：藻类靠光合作用为珊瑚提供大部分能量，珊瑚则分泌碳酸钙骨骼，数千年层层堆积成礁。珊瑚礁覆盖的海底面积不到 1%，却养育了约四分之一的海洋物种。</p>
+      <dl class="facts reveal">
+        <div><dt>栖息深度</dt><dd>0–50 m（造礁珊瑚）</dd></div>
+        <div><dt>共生伙伴</dt><dd>虫黄藻</dd></div>
+        <div><dt>主要威胁</dt><dd>海水升温引发白化</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="海星" data-side="right">
+    <span class="bignum" aria-hidden="true">02</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">02 / 11</span><span>透光层</span><span>下潜 18 m</span></p>
+      <h2 class="neon reveal">Starfish</h2>
+      <p class="latin reveal">Asteroidea</p>
+      <h3 class="cn reveal">海星</h3>
+      <p class="desc reveal">海星没有大脑，也没有真正意义上的血液。它靠一套充满海水的水管系统，驱动腕下数百只管足缓慢爬行、撬开贝壳。每条腕的末端都长着一只简单的眼点，能分辨明暗和粗略的轮廓；许多种类断腕之后还能再生。</p>
+      <dl class="facts reveal">
+        <div><dt>已知物种</dt><dd>约 1,900 种</dd></div>
+        <div><dt>腕的数量</dt><dd>常见 5 条，多者 40 余条</dd></div>
+        <div><dt>分布深度</dt><dd>潮间带至 6,000 m 以下</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="海马" data-side="left">
+    <span class="bignum" aria-hidden="true">03</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">03 / 11</span><span>透光层</span><span>下潜 25 m</span></p>
+      <h2 class="neon reveal">Seahorse</h2>
+      <p class="latin reveal">Hippocampus</p>
+      <h3 class="cn reveal">海马</h3>
+      <p class="desc reveal">海马是少数由雄性“怀孕”的动物：雌海马把卵产进雄海马腹部的育儿袋，由雄性完成受精和孵育，直到把小海马“生”出来。它们直立着游动，靠背鳍高频扇动缓缓前进，是游得最慢的鱼类之一；累了就用能卷曲的尾巴缠住海草歇息。</p>
+      <dl class="facts reveal">
+        <div><dt>已知物种</dt><dd>40 余种</dd></div>
+        <div><dt>体长</dt><dd>约 1.5–35 cm</dd></div>
+        <div><dt>育幼方式</dt><dd>雄性育儿袋孵卵</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="鲎" data-side="right">
+    <span class="bignum" aria-hidden="true">04</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">04 / 11</span><span>透光层</span><span>下潜 30 m</span></p>
+      <h2 class="neon reveal">Horseshoe Crab</h2>
+      <p class="latin reveal">Tachypleus tridentatus</p>
+      <h3 class="cn reveal">鲎</h3>
+      <p class="desc reveal">鲎在地球上已生存约 4.5 亿年，比恐龙还古老，被称为“活化石”。它的英文名叫“马蹄蟹”，亲缘上却更接近蜘蛛和蝎子。鲎的血液含血蓝蛋白，呈淡蓝色；其中的变形细胞遇到细菌内毒素会迅速凝集，据此制成的鲎试剂至今仍是注射剂和医疗器械内毒素检测的关键工具。</p>
+      <dl class="facts reveal">
+        <div><dt>现存物种</dt><dd>4 种</dd></div>
+        <div><dt>演化历史</dt><dd>约 4.5 亿年</dd></div>
+        <div><dt>保护等级</dt><dd>中国鲎：IUCN 濒危，国家二级</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="海龟" data-side="left">
+    <span class="bignum" aria-hidden="true">05</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">05 / 11</span><span>透光层</span><span>下潜 60 m</span></p>
+      <h2 class="neon reveal">Sea Turtle</h2>
+      <p class="latin reveal">Chelonioidea</p>
+      <h3 class="cn reveal">海龟</h3>
+      <p class="desc reveal">海龟的祖先在一亿多年前就已下海。雌海龟能借助地磁场导航，横渡数千公里，回到自己出生的那片沙滩产卵。沙子的温度决定了龟蛋孵出的性别：温度越高，雌性越多。气候变暖已经让一些海滩几乎只孵出雌龟。</p>
+      <dl class="facts reveal">
+        <div><dt>现存物种</dt><dd>7 种</dd></div>
+        <div><dt>洄游距离</dt><dd>可超过 10,000 km</dd></div>
+        <div><dt>下潜深度</dt><dd>棱皮龟可达 1,000 m 以上</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="魔鬼鱼" data-side="right">
+    <span class="bignum" aria-hidden="true">06</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">06 / 11</span><span>透光层</span><span>下潜 120 m</span></p>
+      <h2 class="neon reveal">Manta Ray</h2>
+      <p class="latin reveal">Mobula birostris</p>
+      <h3 class="cn reveal">魔鬼鱼 · 蝠鲼</h3>
+      <p class="desc reveal">蝠鲼俗称“魔鬼鱼”，名字吓人，性情却很温和。它张开宽大的嘴滤食浮游生物，尾部也没有魟鱼那样的毒刺。巨型蝠鲼翼展可达约 7 米，是脑重与体重之比最大的鱼类之一；在镜子测试中，它们还表现出一些可能与自我觉察有关的行为。</p>
+      <dl class="facts reveal">
+        <div><dt>翼展</dt><dd>最大约 7 m</dd></div>
+        <div><dt>下潜深度</dt><dd>可超过 1,000 m</dd></div>
+        <div><dt>保护等级</dt><dd>IUCN 濒危</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="鲨鱼" data-side="left">
+    <span class="bignum" aria-hidden="true">07</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">07 / 11</span><span>透光层</span><span>下潜 180 m</span></p>
+      <h2 class="neon reveal">Shark</h2>
+      <p class="latin reveal">Carcharodon carcharias</p>
+      <h3 class="cn reveal">鲨鱼 · 大白鲨</h3>
+      <p class="desc reveal">鲨鱼已经在海洋里巡游了约 4 亿年，比地球上第一批树木出现得还早。它们的吻部布满“劳伦氏壶腹”，能感知猎物肌肉收缩时产生的微弱电场。鲨鱼的牙齿一生不断脱落更新，有些种类一辈子要换掉上万颗牙。</p>
+      <dl class="facts reveal">
+        <div><dt>现存物种</dt><dd>500 余种</dd></div>
+        <div><dt>大白鲨体长</dt><dd>约 4–6 m</dd></div>
+        <div><dt>特殊感官</dt><dd>电感受（劳伦氏壶腹）</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="蓝鲸" data-side="right">
+    <span class="bignum" aria-hidden="true">08</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">08 / 11</span><span>弱光层</span><span>下潜 300 m</span></p>
+      <h2 class="neon reveal">Blue Whale</h2>
+      <p class="latin reveal">Balaenoptera musculus</p>
+      <h3 class="cn reveal">蓝鲸</h3>
+      <p class="desc reveal">蓝鲸是地球上已知体型最大的动物：体长可达约 30 米，体重可达约 190 吨，仅心脏就重约 180 公斤。这个庞然大物几乎只吃几厘米长的磷虾，觅食季每天能吞下数吨。它们的低频叫声响度可达 180 分贝以上，能在海中传出数百公里。</p>
+      <dl class="facts reveal">
+        <div><dt>体长</dt><dd>可达约 30 m</dd></div>
+        <div><dt>体重</dt><dd>可达约 190 t</dd></div>
+        <div><dt>保护等级</dt><dd>IUCN 濒危</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="水母" data-side="left">
+    <span class="bignum" aria-hidden="true">09</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">09 / 11</span><span>弱光层</span><span>下潜 550 m</span></p>
+      <h2 class="neon reveal">Jellyfish</h2>
+      <p class="latin reveal">Medusozoa</p>
+      <h3 class="cn reveal">水母</h3>
+      <p class="desc reveal">水母在海洋中漂游了超过 5 亿年，身体约 95% 是水，没有大脑、心脏和骨骼，只靠一张弥散的神经网协调游动和捕食。神经科学里常用的绿色荧光蛋白（GFP），最早就是从维多利亚多管发光水母中分离出来的，这项工作获得了 2008 年诺贝尔化学奖。</p>
+      <dl class="facts reveal">
+        <div><dt>演化历史</dt><dd>超过 5 亿年</dd></div>
+        <div><dt>含水量</dt><dd>约 95%</dd></div>
+        <div><dt>科学贡献</dt><dd>绿色荧光蛋白 GFP</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="灯笼鱼" data-side="right">
+    <span class="bignum" aria-hidden="true">10</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">10 / 11</span><span>弱光层</span><span>下潜 800 m</span></p>
+      <h2 class="neon reveal">Lanternfish</h2>
+      <p class="latin reveal">Myctophidae</p>
+      <h3 class="cn reveal">灯笼鱼</h3>
+      <p class="desc reveal">灯笼鱼是深海里数量最多的脊椎动物之一，可能占全球深海鱼类生物量的一半以上。它们身体两侧排列着会发光的“发光器”，每个物种的光点排布都不相同。白天它们躲在数百米深的暗处，夜里成群上浮到近表层觅食，黎明前再沉回去。这种昼夜垂直迁移是地球上规模最大的动物迁徙之一。</p>
+      <dl class="facts reveal">
+        <div><dt>已知物种</dt><dd>约 250 种</dd></div>
+        <div><dt>白天栖息</dt><dd>约 300–1,500 m</dd></div>
+        <div><dt>体长</dt><dd>多为 2–15 cm</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec creature" data-name="鮟鱇" data-side="left">
+    <span class="bignum" aria-hidden="true">11</span>
+    <article class="card">
+      <p class="meta reveal"><span class="idx">11 / 11</span><span>无光层</span><span>下潜 2,000 m</span></p>
+      <h2 class="neon reveal">Anglerfish</h2>
+      <p class="latin reveal">Ceratioidei</p>
+      <h3 class="cn reveal">鮟鱇 · 深海“灯笼鱼”</h3>
+      <p class="desc reveal">深海鮟鱇雌鱼的头顶伸出一根由背鳍棘演化成的“钓竿”，末端的拟饵里住着会发光的共生细菌，在漆黑的深海中像一盏小灯笼引诱猎物上门，所以中文里也常被叫作“灯笼鱼”。部分种类的雄鱼体型极小，会咬住雌鱼并与之融合、共享血液循环，从此终生依附生活。</p>
+      <dl class="facts reveal">
+        <div><dt>已知物种</dt><dd>约 170 种</dd></div>
+        <div><dt>栖息深度</dt><dd>数百米至 4,000 m</dd></div>
+        <div><dt>发光来源</dt><dd>拟饵中的共生细菌</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="sec finale" data-name="深渊" data-side="center">
+    <div class="finale__inner">
+      <p class="meta reveal"><span>无光层以下</span><span>4,000 m</span></p>
+      <h2 class="neon reveal">The Abyss</h2>
+      <h3 class="cn reveal">深渊</h3>
+      <p class="desc reveal">海洋覆盖了地球约 71% 的表面，平均深度约 3,700 米。到 2024 年，人类用现代技术精细测绘过的海底仍只有约四分之一，更深处还有大量生命等待被认识。</p>
+      <button id="backTop" class="btn btn--primary reveal" type="button">返回海面</button>
+      <p class="credit reveal">粒子形体、生物动作与配乐均由代码实时生成</p>
+    </div>
+  </section>
+
+</main>
+
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

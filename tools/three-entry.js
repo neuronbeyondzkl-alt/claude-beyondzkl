@@ -3,7 +3,7 @@
 export {
   WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, BufferAttribute, Points, ShaderMaterial,
   DataTexture, RGBAFormat, FloatType, NearestFilter, Vector2, Matrix4, Quaternion, Euler, Vector3,
-  Mesh, PlaneGeometry, AdditiveBlending, SRGBColorSpace, NoToneMapping, Color,
+  Mesh, PlaneGeometry, AdditiveBlending, SRGBColorSpace, NoToneMapping, Color, LineSegments, Vector4,
 } from 'three';
 export { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 export { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
