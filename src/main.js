@@ -1,6 +1,7 @@
 import { ParticleField } from './particles.js';
 import { SHAPES, generateShape } from './shapes.js';
 import { Soundtrack } from './audio.js';
+import { createInteractions } from './interact.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
@@ -21,17 +22,17 @@ const LEVELS = [1, 2, 2, 3, 3, 4, 4, 5, 5]; // 每个层级对应的配器强度
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- 设置（本地记忆，失败时用默认值） ----------
-const defaults = { glow: 100, accent: 100, psize: 100, vol: 70, font: 'Anton' };
+const defaults = { glow: 100, tglow: 100, accent: 100, psize: 100, vol: 80, font: 'Oswald' };
 let settings = { ...defaults };
 try {
-  const raw = localStorage.getItem('np-settings');
+  const raw = localStorage.getItem('np-settings-v2');
   if (raw) settings = { ...defaults, ...JSON.parse(raw) };
 } catch (e) {
   /* 隐私模式等情况下无法读取 */
 }
 const saveSettings = () => {
   try {
-    localStorage.setItem('np-settings', JSON.stringify(settings));
+    localStorage.setItem('np-settings-v2', JSON.stringify(settings));
   } catch (e) {
     /* 忽略 */
   }
@@ -84,21 +85,23 @@ function mixHex(a, b, t) {
   const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
   return 'rgb(' + pa.map((v, i) => Math.round(lerp(v, pb[i], t))).join(',') + ')';
 }
+// 标题霓虹：只用 Loyel 色板 —— 描边 #6C9AC4 → #9FBDDA（100%）→ 偏 #CCDBEB（200%），
+// 外发光三层依次为 #9FBDDA / #6C9AC4 / #497DAE，整体比 v1 更蓝、更不发白
 function applyNeon(g) {
   const st = document.documentElement.style;
-  st.setProperty('--glow', g.toFixed(2));
-  const stroke = g < 1 ? mixHex('#6c9ac4', '#ccdbeb', g) : mixHex('#ccdbeb', '#f4f7fb', (g - 1) / 1);
+  st.setProperty('--tglow', g.toFixed(2));
+  const stroke = g < 1 ? mixHex('#6c9ac4', '#9fbdda', g) : mixHex('#9fbdda', '#ccdbeb', (g - 1) * 0.55);
   st.setProperty('--neon-stroke', stroke);
   if (g < 0.02) {
     st.setProperty('--neon-filter', 'none');
     return;
   }
-  const m = Math.min(g, 1.6);
+  const m = Math.min(g, 1.7);
   st.setProperty(
     '--neon-filter',
-    `drop-shadow(0 0 ${(0.6 + 1.6 * g).toFixed(1)}px rgba(232,238,246,${(0.25 + 0.35 * m).toFixed(2)})) ` +
-      `drop-shadow(0 0 ${(3 + 8 * g).toFixed(1)}px rgba(159,189,218,${(0.22 + 0.33 * m).toFixed(2)})) ` +
-      `drop-shadow(0 0 ${(9 + 22 * g).toFixed(1)}px rgba(108,154,196,${(0.14 + 0.32 * m).toFixed(2)}))`,
+    `drop-shadow(0 0 ${(0.6 + 1.4 * g).toFixed(1)}px rgba(159,189,218,${(0.3 + 0.32 * m).toFixed(2)})) ` +
+      `drop-shadow(0 0 ${(3 + 9 * g).toFixed(1)}px rgba(108,154,196,${(0.26 + 0.34 * m).toFixed(2)})) ` +
+      `drop-shadow(0 0 ${(10 + 24 * g).toFixed(1)}px rgba(73,125,174,${(0.18 + 0.34 * m).toFixed(2)}))`,
   );
 }
 
@@ -124,27 +127,29 @@ const audio = new Soundtrack();
 audio.setVolume(settings.vol / 100);
 const soundBtn = $('#soundBtn');
 const heroPlay = $('#heroPlay');
+const SOUND_LABELS = {
+  off: ['开启配乐', '▶ 点燃配乐'],
+  loading: ['配乐载入中…', '配乐载入中…'],
+  on: ['配乐：开', '❚❚ 暂停配乐'],
+  blocked: ['点击恢复配乐', '▶ 点击恢复配乐'],
+};
 function syncSoundUI() {
-  const on = audio.playing;
-  soundBtn.setAttribute('aria-pressed', String(on));
-  $('.label', soundBtn).textContent = on ? '配乐：开' : '开启配乐';
-  heroPlay.textContent = on ? '❚❚ 暂停配乐' : '▶ 点燃配乐';
+  const st = audio.uiState;
+  soundBtn.setAttribute('aria-pressed', String(st !== 'off'));
+  soundBtn.dataset.state = st;
+  $('.label', soundBtn).textContent = SOUND_LABELS[st][0];
+  heroPlay.textContent = SOUND_LABELS[st][1];
 }
-async function toggleSound() {
-  try {
-    if (audio.playing) audio.stop();
-    else await audio.start();
-  } catch (e) {
-    console.warn('音频无法启动', e);
-  }
+audio.onStatus = syncSoundUI;
+function toggleSound() {
+  const st = audio.uiState;
+  // “点击恢复”状态下再点一次是恢复，而不是关闭
+  if (st === 'off' || st === 'blocked') audio.start();
+  else audio.stop();
   syncSoundUI();
 }
 soundBtn.addEventListener('click', toggleSound);
 heroPlay.addEventListener('click', toggleSound);
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) audio.pause();
-  else audio.resume();
-});
 
 // ---------- 控制台 ----------
 const panel = $('#panel');
@@ -190,22 +195,32 @@ function bindRange(id, onChange) {
   update();
   return { input, update };
 }
-const presetBtns = $$('.presets button');
-const glowCtl = bindRange('glow', (v) => {
+const presetsOf = (id) => $$(`.presets[data-target="${id}"] button`);
+const markPreset = (id, v) => presetsOf(id).forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.value) === v)));
+const ctls = {};
+ctls.glow = bindRange('glow', (v) => {
   const g = v / 100;
   if (field) field.setGlow(g);
-  applyNeon(g);
-  presetBtns.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.glow) === v)));
+  document.documentElement.style.setProperty('--glow', g.toFixed(2));
+  markPreset('glow', v);
 });
-presetBtns.forEach((b) =>
-  b.addEventListener('click', () => {
-    glowCtl.input.value = b.dataset.glow;
-    glowCtl.update();
-    saveSettings();
-  }),
-);
+ctls.tglow = bindRange('tglow', (v) => {
+  applyNeon(v / 100);
+  markPreset('tglow', v);
+});
+for (const id of ['glow', 'tglow']) {
+  presetsOf(id).forEach((b) =>
+    b.addEventListener('click', () => {
+      ctls[id].input.value = b.dataset.value;
+      ctls[id].update();
+      saveSettings();
+    }),
+  );
+}
 bindRange('accent', (v) => {
   if (field) field.uniforms.uAccent.value = v / 100;
+  // 色彩丰富度为 0 时，界面里的峰电位也收回为低饱和蓝
+  document.documentElement.style.setProperty('--ap', v > 5 ? '#f0b46a' : '#ccdbeb');
 });
 bindRange('psize', (v) => {
   if (field) field.uniforms.uSize.value = BASE_SIZE * (v / 100);
@@ -214,13 +229,16 @@ bindRange('vol', (v) => audio.setVolume(v / 100));
 
 const fontSel = $('#font');
 fontSel.value = settings.font;
+// 只有 Oswald 加载 600、Syncopate 加载 700，其余字体只有 400：按字体设置字重，避免浏览器伪加粗
+const FONT_WEIGHT = { Oswald: 600, Syncopate: 700 };
 function applyFont(name) {
+  document.documentElement.style.setProperty('--display-weight', String(FONT_WEIGHT[name] || 400));
   document.documentElement.style.setProperty(
     '--font-display',
-    `'${name}', 'Anton', 'Bebas Neue', Impact, 'Arial Narrow Bold', sans-serif`,
+    `'${name}', 'Oswald', 'Anton', Impact, 'Arial Narrow Bold', sans-serif`,
   );
   if (document.fonts && document.fonts.load) {
-    document.fonts.load(`100px "${name}"`).then(fitTitles, fitTitles);
+    document.fonts.load(`${FONT_WEIGHT[name] || 400} 100px "${name}"`).then(fitTitles, fitTitles);
   }
   fitTitles();
 }
@@ -248,8 +266,9 @@ function measure() {
     const fit = SHAPES[i].fit || 1;
     const outro = i === S - 1;
     if (portrait) {
+      if (i === 0) return { x: 0, y: hh * 0.12, s: Math.min(1, hw / 1.9) };
       const s = Math.min(1, hw / 2.6) * fit;
-      return { x: 0, y: i === 0 ? hh * 0.08 : outro ? hh * 0.5 : hh * 0.36, s: s * 0.92 };
+      return { x: 0, y: outro ? hh * 0.5 : hh * 0.36, s: s * 0.92 };
     }
     const s = Math.min(1.05, hh / 3.5) * fit;
     const dx = (SHAPES[i].dx || 0) * s;
@@ -298,11 +317,12 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
+const portraitAtLoad = innerWidth <= 820 || innerWidth / innerHeight < 1.05;
 let ready = 0; // 已生成的形态数量
 let introT = -1;
 async function generateAll() {
   for (let i = 0; i < S; i++) {
-    const { pos, col } = generateShape(i, COUNT);
+    const { pos, col } = generateShape(i, COUNT, { portrait: portraitAtLoad });
     field.setShape(i, pos, col);
     ready = i + 1;
     loading.textContent = `正在生成神经粒子 ${ready} / ${S} · ${COUNT.toLocaleString('en-US')} 个粒子`;
@@ -313,22 +333,29 @@ async function generateAll() {
   setTimeout(() => {
     loading.style.opacity = '0';
   }, 2600);
+  // 粒子就绪后，在空闲时提前离线渲染配乐分轨（渲染在音频线程完成，不占用画面帧）
+  setTimeout(() => audio.prepare(), 800);
 }
 
-// ---------- 指针 ----------
-const mouse = { x: 9, y: 9, on: 0, last: -10, px: 0, py: 0 };
+// ---------- 指针视差 ----------
+const mouse = { px: 0, py: 0 };
 addEventListener(
   'pointermove',
   (e) => {
     mouse.px = (e.clientX / innerWidth) * 2 - 1;
     mouse.py = -((e.clientY / innerHeight) * 2 - 1);
-    if (e.pointerType === 'touch') return;
-    mouse.x = mouse.px;
-    mouse.y = mouse.py;
-    mouse.last = performance.now();
   },
   { passive: true },
 );
+
+const neuro = createInteractions({
+  field,
+  audio,
+  sections,
+  dots,
+  reduceMotion,
+  accent: () => settings.accent / 100,
+});
 
 // ---------- 主循环 ----------
 let cur = 0;
@@ -346,8 +373,12 @@ function shapeAngle(i, t) {
   return m.base + m.sway * rm * Math.sin(t * 0.22 + i * 1.7);
 }
 
+let pendingFirstSpike = false;
 function onSection(i) {
+  neuro.hopRail(active, i);
+  pendingFirstSpike = true;
   sections.forEach((s, k) => s.classList.toggle('is-active', k === i));
+  document.documentElement.classList.toggle('at-hero', i === 0);
   dots.forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
   const sec = sections[i];
   hudIdx.textContent = String(i === S - 1 ? 7 : i).padStart(2, '0') + ' / 07';
@@ -369,6 +400,8 @@ function frame(now) {
   const target = scrollTarget();
   const sec = Math.round(target);
   if (sec !== active) onSection(sec);
+  beat = Math.max(beat * Math.exp(-dt * 7), audio.pollBeats());
+  if (neuro.update(dt, now).ltp) flash = 1;
 
   if (field) {
     cur += (target - cur) * (1 - Math.exp(-dt * 5));
@@ -387,16 +420,15 @@ function frame(now) {
     const it = introT < 0 ? 0 : Math.min(1, (now - introT) / (reduceMotion ? 800 : 2800));
     U.uIntro.value = 1 - Math.pow(1 - it, 2);
 
-    const hit = audio.pollBeats();
-    beat = Math.max(beat * Math.exp(-dt * 7), hit);
     flash *= Math.exp(-dt * 3.2);
     U.uBeat.value = beat;
     U.uFlash.value = flash;
 
-    const idle = (now - mouse.last) / 1000;
-    const tgtOn = idle < 1.4 ? 1 : 0;
-    U.uMouseOn.value += (tgtOn - U.uMouseOn.value) * (1 - Math.exp(-dt * 4));
-    U.uMouse.value.set(mouse.x, mouse.y);
+    // 形态稳定下来后，让它按自己的生理方向“首次放电”（树突→胞体→轴突、EC→DG→CA3→CA1、脑→脊髓→四肢…）
+    if (pendingFirstSpike && it >= 1 && Math.abs(target - cur) < 0.03 && ready > Math.round(target)) {
+      pendingFirstSpike = false;
+      neuro.firstSpike();
+    }
     par.x += (mouse.px - par.x) * (1 - Math.exp(-dt * 2));
     par.y += (mouse.py - par.y) * (1 - Math.exp(-dt * 2));
 
@@ -409,6 +441,7 @@ function frame(now) {
     g.rotation.y = lerpAngle(shapeAngle(from, time), shapeAngle(to, time), mix) + par.x * 0.22;
     g.rotation.x = lerp(SHAPES[from].tilt, SHAPES[to].tilt, mix) - par.y * 0.12;
 
+    field.setWarp(Math.sin(Math.PI * mix), !reduceMotion && !small);
     field.render();
   }
   requestAnimationFrame(frame);

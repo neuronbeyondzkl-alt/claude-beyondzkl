@@ -270,13 +270,17 @@ class Builder {
 }
 
 // 背景星尘：每个形态都保留一些，让形变过程始终有“宇宙感”
-function addDust(b, count) {
+function addDust(b, count, reject = null) {
   const R = b.R;
   b.reset();
   for (let k = 0; k < count; k++) {
     const x = (R() * 2 - 1) * 7.0;
     const y = (R() * 2 - 1) * 4.4;
     const z = -5.5 + R() * 7.5;
+    if (reject && reject(x, y, z)) {
+      k--;
+      continue;
+    }
     const acc = R() < 0.05;
     const c = acc ? pick(R, [PAL.lav, PAL.aqua, PAL.orchid]) : blueDim(R);
     const path = R() < 0.3 ? R() * 40 : -1;
@@ -294,82 +298,263 @@ function tubePoint(poly, u, r, R, shell = 0.8) {
 }
 
 // ===================================================================
-// 0 · 首页：神经火种（胞体般的光核 + 放射状突起 + 轨道环）
+// 0 · 首页：彼此连接的锥体神经元网络（前景 5 个大锥体神经元 + 背景小锥体神经元）
+// 锥体神经元的特征：三角形胞体、竖直上行的顶树突与顶端树突簇、四周的基底树突、向下的轴突；
+// 轴突侧支末端的突触小体落在相邻神经元的树突上，放电从左向右逐个传递
 // ===================================================================
-function shapeHero(b) {
-  const { R, noise } = b;
-  const [cCore, cInner, cFil, cRing, cDust] = alloc(b.n, [0.24, 0.06, 0.44, 0.16, 0.1]);
-  b.s = 0.95;
-  for (let k = 0; k < cCore; k++) {
-    const d = onSphere(R);
-    const nv = noise(d[0] * 2.2, d[1] * 2.2, d[2] * 2.2);
-    const r = 0.95 + 0.1 * nv + 0.02 * R();
-    const acc = R() < 0.08;
-    const c = acc ? pick(R, [PAL.amber, PAL.aqua, PAL.lav]) : nv > 0.2 ? blueBright(R) : blue(R);
-    b.addP(mul(d, r), (nv + 1) * 1.6 + R() * 0.2, c, nv > 0.2 ? 1.15 : 0.95, acc);
+function buildPyramidal(R, S, k, lean = 0, o = {}) {
+  const dend = [];
+  const axon = [];
+  const up = norm([lean, 1, 0]);
+  const trunkLen = (o.trunk || 2.5 + R() * 0.5) * k;
+  // 顶树突主干 + 斜枝 + 顶端树突簇
+  const trunk = growBranch(R, dend, add(S, [0, 0.3 * k, 0]), up, trunkLen, 0.058 * k, 0, 0, 0, 'apical', {
+    wiggle: 0.035,
+    angle: 0,
+  });
+  const top = trunk.poly.at(1);
+  const nTuft = o.tuft || 3 + (R() < 0.5 ? 1 : 0);
+  for (let i = 0; i < nTuft; i++) {
+    growBranch(R, dend, top, deviate(up, 0.45 + R() * 0.5, R), 0.6 * k, 0.03 * k, 0, 2, trunk.poly.len, 'tuft', {
+      wiggle: 0.18,
+      angle: 0.6,
+    });
   }
-  for (let k = 0; k < cInner; k++) {
-    b.addP(mul(inSphere(R), 0.85), -1, blueDim(R), 0.8, false);
+  for (const u of o.obliques || [0.24, 0.4, 0.57, 0.74]) {
+    growBranch(R, dend, trunk.poly.at(u), deviate(up, 0.95 + R() * 0.35, R), (0.45 + R() * 0.35) * k, 0.024 * k, 0, 1, u * trunk.poly.len, 'oblique', {
+      wiggle: 0.14,
+      angle: 0.55,
+    });
   }
-  const fils = [];
-  const F = 120;
-  for (let f = 0; f < F; f++) {
-    const d = norm(add(fib(f, F), mul(onSphere(R), 0.12)));
-    const [n1, n2] = perpBasis(d);
-    const L = 2.0 + R() * 1.5;
-    const w1 = (R() - 0.5) * 2;
-    const w2 = (R() - 0.5) * 2;
-    const ctrl = [
-      mul(d, 0.95),
-      add(mul(d, 1.35), mul(n1, 0.12 * w1)),
-      add(add(mul(d, 1.95), mul(n1, 0.35 * w1)), mul(n2, 0.15 * w2)),
-      add(add(mul(d, L), mul(n1, 0.6 * w1)), mul(n2, 0.3 * w2)),
-    ];
-    const poly = curve(ctrl, 10);
-    const acc = R() < 0.24;
-    const c = acc ? pick(R, [PAL.aqua, PAL.lav, PAL.amber, PAL.orchid]) : blue(R);
-    fils.push({ poly, c, acc, off: R() * 3 });
-    if (R() < 0.6) {
-      const s = 0.45 + R() * 0.25;
-      const p0 = poly.at(s);
-      const dir = deviate(poly.tangent(s), 0.5 + R() * 0.4, R);
-      const p1 = add(p0, mul(dir, 0.5 + R() * 0.4));
-      const p2 = add(p1, mul(deviate(dir, 0.3, R), 0.3 + R() * 0.3));
-      fils.push({ poly: curve([p0, p1, p2], 8), c, acc, off: R() * 3 + s * 2 });
+  // 基底树突：向两侧下垂张开
+  const nb = o.basal || 5 + (R() < 0.5 ? 1 : 0);
+  for (let i = 0; i < nb; i++) {
+    const ph = (i / nb) * TAU + R() * 0.6;
+    const dir = norm([Math.cos(ph) * 0.95, -0.5 - R() * 0.5, Math.sin(ph) * 0.7]);
+    growBranch(R, dend, add(S, mul(dir, 0.22 * k)), dir, (0.8 + R() * 0.35) * k, 0.036 * k, 0, 2, 0, 'basal', {
+      wiggle: 0.12,
+      angle: 0.55,
+    });
+  }
+  // 主轴突：自胞体底部（轴丘 / 起始段）向下
+  const a0 = add(S, [0, -0.34 * k, 0]);
+  const main = curve(
+    [a0, add(a0, [0.05 * k, -0.6 * k, 0.05]), add(a0, [-0.1 * k, -1.3 * k, 0.1]), add(a0, [0.05 * k, -2.3 * k, 0])],
+    10,
+  );
+  axon.push({ poly: main, r0: 0.022 * k, r1: 0.016 * k, dist0: 0, kind: 'axon' });
+  const dMax = Math.max(...dend.map((sg) => sg.dist0 + sg.poly.len));
+  return { S, k, dend, axon, main, trunk, dMax, boutons: [] };
+}
+
+// 从神经元 a 的轴突发出侧支，止于神经元 b 的指定部位（基底树突 / 顶树突斜枝），末端形成突触小体
+function connect(R, a, bN, target, drop = 0.45) {
+  const u = 0.32 + R() * 0.25;
+  const p0 = a.main.at(u);
+  const mid = add(lerp3(p0, target, 0.5), [0, -drop - R() * 0.3, (R() - 0.5) * 0.4]);
+  const side = Math.sign(target[0] - p0[0]) || 1;
+  const poly = curve([p0, add(p0, [side * 0.22, -0.18, 0]), mid, target], 16);
+  const dist0 = u * a.main.len;
+  a.axon.push({ poly, r0: 0.017 * a.k, r1: 0.013 * a.k, dist0, kind: 'collateral' });
+  a.boutons.push({ c: target, dist: dist0 + poly.len });
+  return dist0 + poly.len;
+}
+
+// 篮状细胞（抑制性中间神经元）：多极小胞体 + 包绕锥体细胞胞体的轴突“篮”
+function buildBasket(R, S, k, targets) {
+  const dend = [];
+  for (let i = 0; i < 6; i++) growBranch(R, dend, S, onSphere(R), 0.42 * k, 0.02 * k, 0, 1, 0, 'idend', { wiggle: 0.25, angle: 0.7 });
+  const rings = targets.map((t) => {
+    const pts = [];
+    for (let j = 0; j <= 40; j++) {
+      const a = (j / 40) * TAU;
+      pts.push(add(t.c, [Math.cos(a) * t.r, 0.12 * Math.sin(a * 3), Math.sin(a) * t.r * 0.8]));
     }
+    return { ring: new Poly(pts), link: curve([S, lerp3(S, t.c, 0.5), add(t.c, [t.r, 0, 0])], 10) };
+  });
+  return { S, k, dend, rings };
+}
+
+function shapeHero(b, opts = {}) {
+  const { R } = b;
+  const portrait = !!opts.portrait;
+  const [cGiant, cMid, cForest, cBasket, cNeuropil, cDust] = alloc(b.n, [0.6, 0.15, 0.07, 0.03, 0.04, 0.11]);
+  const SP = 0.8; // 路径参数间距：每 0.8 个世界单位一个放电周期
+  // 文字留白区：描述文字背后不放星尘与神经毡，保证可读性
+  const clear = (x, y, z) => Math.abs(x) < (portrait ? 1.6 : 2.3) && y > -1.05 && y < 0.1 && z > -2;
+
+  // 前景巨型锥体神经元：中间最大（胞体在描述文字下方，顶树突穿过标题直到顶端），左右两个侧翼
+  const gDefs = portrait
+    ? [
+        { S: [0.05, -1.75, -0.3], k: 1.05, lean: 0.02, trunk: 3.6, obl: [0.6, 0.72, 0.84], tuft: 5, basal: 7 },
+        { S: [-1.55, -0.55, 0.3], k: 0.74, lean: 0.07, trunk: 3.2 },
+        { S: [1.6, -0.85, 0.1], k: 0.72, lean: -0.06, trunk: 3.3 },
+      ]
+    : [
+        { S: [0.35, -2.05, 0.25], k: 1.32, lean: 0.0, trunk: 3.45, obl: [0.6, 0.72, 0.84], tuft: 5, basal: 7 },
+        { S: [-3.85, -0.95, 0.35], k: 0.95, lean: 0.1, trunk: 3.5 },
+        { S: [3.75, -0.45, 0.05], k: 0.92, lean: -0.09, trunk: 3.35 },
+      ];
+  const giants = gDefs.map((d) => buildPyramidal(R, d.S, d.k, d.lean, { trunk: d.trunk, obliques: d.obl, tuft: d.tuft, basal: d.basal }));
+  const [C, L, Rn] = giants;
+  const mDefs = portrait
+    ? [
+        [-0.9, 0.9, -2.8, 0.5],
+        [1.0, -2.6, -2.2, 0.55],
+      ]
+    : [
+        [-1.9, -1.8, -1.9, 0.66],
+        [2.05, -2.35, -2.2, 0.64],
+        [-5.4, 1.1, -1.6, 0.56],
+        [5.3, 1.6, -1.9, 0.56],
+        [-0.9, 1.0, -3.0, 0.5],
+      ];
+  const mids = mDefs.map(([x, y, z, k]) => buildPyramidal(R, [x, y, z], k, (R() - 0.5) * 0.16));
+  const basalOf = (n, sx) => add(n.S, [sx * 0.42 * n.k, -0.42 * n.k, (R() - 0.5) * 0.25]);
+
+  // 突触连接：以 L5 皮层常见的“双向互连”为主（Song et al., 2005），并有少量长程与顶树突输入
+  const base = new Map();
+  base.set(L, 0);
+  const dLC = connect(R, L, C, basalOf(C, -1));
+  base.set(C, (dLC - 0.4) / SP);
+  connect(R, C, L, basalOf(L, 1));
+  const dCR = connect(R, C, Rn, basalOf(Rn, -1));
+  base.set(Rn, base.get(C) + (dCR - 0.4) / SP);
+  connect(R, Rn, C, basalOf(C, 1));
+  connect(R, Rn, L, add(L.S, [0.5 * L.k, -0.6 * L.k, 0]), 0.9);
+  if (!portrait) {
+    // 回响环路（Hebb 1949 的“回响回路”）：右侧神经元的回返侧支沿右缘上升，从标题上方横越，止于左侧神经元的顶端树突簇
+    const p0 = Rn.main.at(0.08);
+    const tuftL = add(L.trunk.poly.at(1), [0.3, 0.15, 0]);
+    const loop = curve([p0, [4.9, -0.6, -0.6], [5.05, 1.8, -0.9], [2.6, 2.78, -1.1], [0, 2.88, -1.2], [-2.5, 2.78, -0.9], tuftL], 18);
+    const d0 = 0.08 * Rn.main.len;
+    Rn.axon.push({ poly: loop, r0: 0.016, r1: 0.013, dist0: d0, kind: 'collateral' });
+    Rn.boutons.push({ c: tuftL, dist: d0 + loop.len });
+    Rn.boutons.push({ c: loop.at(0.55), dist: d0 + loop.len * 0.55 });
+    const [M1, M2, , , M5] = mids;
+    connect(R, M5, C, C.trunk.poly.at(0.64), 0.2);
+    connect(R, M1, L, basalOf(L, 1));
+    connect(R, M2, Rn, basalOf(Rn, -1));
+    connect(R, C, M2, basalOf(M2, -1));
+  } else {
+    connect(R, mids[0], C, C.trunk.poly.at(0.66), 0.2);
   }
-  const pf = makePicker(
-    fils.map((f) => f.poly.len),
+  mids.forEach((m, i) => base.set(m, 1.3 + i * 0.41));
+
+  const sampleNeuron = (nr, count, B, dim) => {
+    const segs = [...nr.dend, ...nr.axon];
+    const pk = makePicker(
+      segs.map((sg) => sg.poly.len * (0.45 + sg.r0 * 9) * (sg.kind === 'apical' ? 1.35 : sg.kind === 'collateral' ? 1.5 : 1)),
+      R,
+    );
+    const nSoma = Math.round(count * 0.13);
+    const nBouton = nr.boutons.length ? Math.round(count * 0.05) : 0;
+    const nAis = Math.round(count * 0.015);
+    for (let k = 0; k < count; k++) {
+      if (k < nSoma) {
+        // 三角形（锥形）胞体：上窄下宽，外壳为主、内部少量填充；中心是薰衣草色的细胞核
+        const d = onSphere(R);
+        const taper = d[1] > 0 ? 1 - 0.62 * d[1] : 1 - 0.12 * d[1] * d[1];
+        const nucleus = !dim && R() < 0.08;
+        const fill = nucleus ? 0.35 * Math.cbrt(R()) : R() < 0.25 ? Math.cbrt(R()) : 1;
+        const p = add(nr.S, [d[0] * 0.27 * nr.k * taper * fill, d[1] * 0.36 * nr.k * fill, d[2] * 0.25 * nr.k * taper * fill]);
+        const c = nucleus ? PAL.lav : dim ? blueDim(R) : blueBright(R);
+        b.addP(p, B + nr.dMax / SP + R() * 0.1, c, dim ? 0.8 : 1.2, nucleus);
+        continue;
+      }
+      if (k < nSoma + nAis) {
+        // 轴突起始段（动作电位的发起处）
+        const u = R() * 0.12;
+        const acc = !dim && R() < 0.3;
+        b.addP(tubePoint(nr.main, u, 0.03 * nr.k, R, 0.3), B + (nr.dMax + u * nr.main.len) / SP, acc ? PAL.amber : PAL.c20, dim ? 0.7 : 1.1, acc);
+        continue;
+      }
+      if (k < nSoma + nAis + nBouton) {
+        const bt = nr.boutons[k % nr.boutons.length];
+        const r = R();
+        const acc = r < 0.6;
+        b.addP(add(bt.c, mul(onSphere(R), 0.06 * nr.k * Math.cbrt(R()))), B + (nr.dMax + bt.dist) / SP, r < 0.45 ? PAL.amber : r < 0.6 ? PAL.lav : PAL.c20, 1.15, acc && !dim);
+        continue;
+      }
+      const sg = segs[pk()];
+      const u = R();
+      let r = lerp(sg.r0, sg.r1, u) * (0.5 + 0.5 * R());
+      const isAxon = sg.kind === 'axon' || sg.kind === 'collateral';
+      if (!isAxon && R() < 0.15) r += (0.025 + R() * 0.045) * nr.k; // 树突棘
+      const p = add(sg.poly.at(u), mul(randPerp(sg.poly.tangent(u), R), r));
+      const d = sg.dist0 + u * sg.poly.len;
+      const path = isAxon ? B + (nr.dMax + d) / SP : B + (nr.dMax - d) / SP;
+      let c;
+      let acc = false;
+      if (dim) c = blueDim(R);
+      else if (isAxon) {
+        // 有髓轴突：间断的髓鞘节段用水青点缀
+        const myelin = sg.kind === 'axon' && Math.sin(d * 14) > 0.2;
+        acc = myelin && R() < 0.3;
+        c = acc ? PAL.aqua : sg.kind === 'collateral' ? PAL.c20 : PAL.c30;
+      } else {
+        acc = R() < 0.04;
+        c = acc ? PAL.lav : sg.kind === 'apical' ? (R() < 0.5 ? PAL.c30 : PAL.c40) : blue(R);
+      }
+      b.addP(p, path, c, dim ? 0.65 : sg.kind === 'collateral' ? 0.95 : isAxon ? 0.8 : 0.88, acc);
+    }
+  };
+
+  // 粒子按体积分配：中间巨型神经元占比最大
+  const gc = alloc(cGiant, giants.map((n) => n.k * n.k * (n === C ? 1.25 : 1)));
+  giants.forEach((n, i) => sampleNeuron(n, gc[i], base.get(n), false));
+  const mc = alloc(cMid, mids.map((n) => n.k));
+  mids.forEach((n, i) => sampleNeuron(n, mc[i], base.get(n), false));
+
+  // 背景“森林”：更小、更暗的锥体神经元，营造皮层纵深
+  const forest = [];
+  const nF = portrait ? 5 : 10;
+  for (let i = 0; i < nF; i++) {
+    const x = portrait ? -2.2 + (4.4 * i) / (nF - 1) : -6.5 + (13 * i) / (nF - 1) + (R() - 0.5) * 0.6;
+    forest.push(buildPyramidal(R, [x, -2.8 + R() * 3.6, -5 + R() * 1.5], 0.38 + R() * 0.12, (R() - 0.5) * 0.2));
+  }
+  const fc = alloc(cForest, forest.map(() => 1));
+  forest.forEach((n, i) => sampleNeuron(n, fc[i], 4 + i * 0.37, true));
+
+  // 两个篮状细胞（兰紫色，抑制性）：轴突环绕锥体细胞胞体，体现兴奋 / 抑制平衡
+  const baskets = portrait
+    ? [buildBasket(R, [-0.9, -1.0, -0.4], 0.7, [{ c: C.S, r: 0.42 * C.k }])]
+    : [
+        buildBasket(R, [-2.1, -0.25, -0.4], 0.85, [{ c: C.S, r: 0.42 * C.k }, { c: L.S, r: 0.4 * L.k }]),
+        buildBasket(R, [2.2, -1.25, -0.5], 0.85, [{ c: Rn.S, r: 0.4 * Rn.k }]),
+      ];
+  for (let k = 0; k < cBasket; k++) {
+    const bk = baskets[k % baskets.length];
+    const r = R();
+    let p;
+    if (r < 0.15) p = add(bk.S, mul(onSphere(R), 0.1 * bk.k));
+    else if (r < 0.45) {
+      const sg = bk.dend[Math.floor(R() * bk.dend.length)];
+      p = tubePoint(sg.poly, R(), 0.015, R, 0.3);
+    } else {
+      const rg = bk.rings[Math.floor(R() * bk.rings.length)];
+      p = r < 0.6 ? tubePoint(rg.link, R(), 0.012, R, 0.3) : add(rg.ring.at(R()), mul(onSphere(R), 0.02));
+    }
+    b.addP(p, -1, R() < 0.6 ? PAL.orchid : PAL.c40, 0.8, true);
+  }
+
+  // 神经毡：树突周围稀疏的微光
+  const allDend = [...giants, ...mids].flatMap((nr) => nr.dend);
+  const pd = makePicker(
+    allDend.map((sg) => sg.poly.len),
     R,
   );
-  for (let k = 0; k < cFil; k++) {
-    const f = fils[pf()];
-    const u = Math.pow(R(), 0.85);
-    const p = add(f.poly.at(u), mul(onSphere(R), 0.01 + 0.025 * u));
-    const tip = u > 0.93;
-    b.addP(p, u * f.poly.len / 0.9 + f.off, tip ? PAL.c20 : f.c, tip ? 1.35 : 0.85 + 0.4 * (1 - u), f.acc && !tip);
+  for (let k = 0; k < cNeuropil; k++) {
+    const sg = allDend[pd()];
+    const p = add(sg.poly.at(R()), mul(onSphere(R), 0.08 + R() * 0.28));
+    if (clear(p[0], p[1], p[2])) {
+      k--;
+      continue;
+    }
+    const acc = R() < 0.08;
+    b.addP(p, R() < 0.3 ? R() * 30 : -1, acc ? PAL.lav : blueDim(R), 0.55, acc);
   }
-  const ca = Math.cos(1.18);
-  const sa = Math.sin(1.18);
-  const cz = Math.cos(0.35);
-  const sz = Math.sin(0.35);
-  const radii = [2.2, 2.65, 3.2];
-  for (let k = 0; k < cRing; k++) {
-    const band = R() < 0.45 ? 0 : R() < 0.55 ? 1 : 2;
-    const r = radii[band] + gauss(R) * 0.05;
-    const th = R() * TAU;
-    let x = Math.cos(th) * r;
-    let y = gauss(R) * 0.03;
-    let z = Math.sin(th) * r;
-    // 绕 x 轴倾斜，再绕 z 轴
-    const y1 = y * ca - z * sa;
-    const z1 = y * sa + z * ca;
-    const x2 = x * cz - y1 * sz;
-    const y2 = x * sz + y1 * cz;
-    const acc = R() < 0.15;
-    b.add(x2, y2, z1, (th / TAU) * 5 + band * 0.31, acc ? PAL.lav : band === 1 ? PAL.c40 : blue(R), 0.75, acc);
-  }
-  addDust(b, cDust);
+  addDust(b, cDust, clear);
 }
 
 // ===================================================================
@@ -1553,7 +1738,7 @@ function shapeInfinity(b) {
 // 旋转方式：spin = 持续自转（rad/s）；sway = 围绕 base 左右摆动
 export const SHAPES = [
 // fit = 构图缩放，dx = 构图水平微调（世界单位）
-  { key: 'hero', gen: shapeHero, spin: 0.1, tilt: 0.18, fit: 1.0, dx: 0 },
+  { key: 'hero', gen: shapeHero, sway: 0.24, base: 0, tilt: 0.05, fit: 1.0, dx: 0 },
   { key: 'brain', gen: shapeBrain, sway: 0.6, base: -0.25, tilt: 0.16, fit: 1.0, dx: 0 },
   { key: 'neuron', gen: shapeNeuron, sway: 0.45, base: 0.1, tilt: 0.04, fit: 0.9, dx: -0.3 },
   { key: 'synapse', gen: shapeSynapse, sway: 0.5, base: 0.2, tilt: 0.1, fit: 0.84, dx: 0 },
@@ -1565,9 +1750,9 @@ export const SHAPES = [
 ];
 
 // 生成单个形态，并按 x 坐标排序：相邻形态之间粒子“就近迁移”，形变更流畅
-export function generateShape(index, n) {
+export function generateShape(index, n, opts = {}) {
   const b = new Builder(n, 1000 + index * 97);
-  SHAPES[index].gen(b);
+  SHAPES[index].gen(b, opts);
   while (b.i < n) addDust(b, 1);
   const order = new Uint32Array(n);
   for (let i = 0; i < n; i++) order[i] = i;
