@@ -15,6 +15,7 @@ const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const lerpAngle = (a, b, t) => a + wrapAngle(b - a) * t;
 
 document.documentElement.classList.add('js');
+let heroBoxes = [];
 
 const sections = $$('.sec');
 const S = SHAPES.length;
@@ -27,6 +28,16 @@ let settings = { ...defaults };
 try {
   const raw = localStorage.getItem('np-settings-v2');
   if (raw) settings = { ...defaults, ...JSON.parse(raw) };
+  else {
+    // 迁移 v1 的设置：保留荧光、粒子大小、音量等，只丢掉旧的默认字体
+    const old = JSON.parse(localStorage.getItem('np-settings') || 'null');
+    if (old) {
+      delete old.font;
+      settings = { ...defaults, ...old, tglow: old.glow ?? defaults.tglow };
+      localStorage.setItem('np-settings-v2', JSON.stringify(settings));
+      localStorage.removeItem('np-settings');
+    }
+  }
 } catch (e) {
   /* 隐私模式等情况下无法读取 */
 }
@@ -77,6 +88,7 @@ function fitTitles() {
       if (lw > avail) ln.style.fontSize = (size * k * avail * 0.98) / lw + 'px';
     }
   }
+  measureTextBoxes();
 }
 
 // ---------- 霓虹描边强度 ----------
@@ -85,12 +97,23 @@ function mixHex(a, b, t) {
   const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
   return 'rgb(' + pa.map((v, i) => Math.round(lerp(v, pb[i], t))).join(',') + ')';
 }
-// 标题霓虹：只用 Loyel 色板 —— 描边 #6C9AC4 → #9FBDDA（100%）→ 偏 #CCDBEB（200%），
-// 外发光三层依次为 #9FBDDA / #6C9AC4 / #497DAE，整体比 v1 更蓝、更不发白
+// 标题霓虹：只用 Loyel 色板 —— 描边 #6C9AC4 → #9FBDDA（100%）→ 略偏 #CCDBEB（200%），
+// 外发光三层依次为 #6C9AC4 / #497DAE / #376392（由内到外越来越深的蓝），整体比 v1 明显更蓝、不发白
+let neonBase = 1;
+let neonBoost = 1;
+let neonRaf = 0;
 function applyNeon(g) {
+  neonBase = g;
+  if (neonRaf) return;
+  neonRaf = requestAnimationFrame(() => {
+    neonRaf = 0;
+    writeNeon(Math.min(2, neonBase * neonBoost));
+  });
+}
+function writeNeon(g) {
   const st = document.documentElement.style;
   st.setProperty('--tglow', g.toFixed(2));
-  const stroke = g < 1 ? mixHex('#6c9ac4', '#9fbdda', g) : mixHex('#9fbdda', '#ccdbeb', (g - 1) * 0.55);
+  const stroke = g < 1 ? mixHex('#6c9ac4', '#9fbdda', g) : mixHex('#9fbdda', '#ccdbeb', (g - 1) * 0.45);
   st.setProperty('--neon-stroke', stroke);
   if (g < 0.02) {
     st.setProperty('--neon-filter', 'none');
@@ -99,10 +122,21 @@ function applyNeon(g) {
   const m = Math.min(g, 1.7);
   st.setProperty(
     '--neon-filter',
-    `drop-shadow(0 0 ${(0.6 + 1.4 * g).toFixed(1)}px rgba(159,189,218,${(0.3 + 0.32 * m).toFixed(2)})) ` +
-      `drop-shadow(0 0 ${(3 + 9 * g).toFixed(1)}px rgba(108,154,196,${(0.26 + 0.34 * m).toFixed(2)})) ` +
-      `drop-shadow(0 0 ${(10 + 24 * g).toFixed(1)}px rgba(73,125,174,${(0.18 + 0.34 * m).toFixed(2)}))`,
+    `drop-shadow(0 0 ${(0.6 + 1.2 * g).toFixed(1)}px rgba(108,154,196,${(0.3 + 0.3 * m).toFixed(2)})) ` +
+      `drop-shadow(0 0 ${(3 + 9 * g).toFixed(1)}px rgba(73,125,174,${(0.28 + 0.32 * m).toFixed(2)})) ` +
+      `drop-shadow(0 0 ${(10 + 26 * g).toFixed(1)}px rgba(55,99,146,${(0.22 + 0.34 * m).toFixed(2)}))`,
   );
+}
+// LTP 时标题短暂增亮 1.2 秒
+function boostTitles() {
+  neonBoost = 1.25;
+  applyNeon(neonBase);
+  document.documentElement.classList.add('ltp');
+  setTimeout(() => {
+    neonBoost = 1;
+    applyNeon(neonBase);
+    document.documentElement.classList.remove('ltp');
+  }, 1200);
 }
 
 // ---------- 导航 ----------
@@ -132,10 +166,11 @@ const SOUND_LABELS = {
   loading: ['配乐载入中…', '配乐载入中…'],
   on: ['配乐：开', '❚❚ 暂停配乐'],
   blocked: ['点击恢复配乐', '▶ 点击恢复配乐'],
+  error: ['配乐不可用 · 重试', '▶ 重试配乐'],
 };
 function syncSoundUI() {
   const st = audio.uiState;
-  soundBtn.setAttribute('aria-pressed', String(st !== 'off'));
+  soundBtn.setAttribute('aria-pressed', String(audio.playing));
   soundBtn.dataset.state = st;
   $('.label', soundBtn).textContent = SOUND_LABELS[st][0];
   heroPlay.textContent = SOUND_LABELS[st][1];
@@ -144,7 +179,7 @@ audio.onStatus = syncSoundUI;
 function toggleSound() {
   const st = audio.uiState;
   // “点击恢复”状态下再点一次是恢复，而不是关闭
-  if (st === 'off' || st === 'blocked') audio.start();
+  if (st === 'off' || st === 'blocked' || st === 'error') audio.start();
   else audio.stop();
   syncSoundUI();
 }
@@ -258,6 +293,7 @@ let layout = [];
 function measure() {
   tops = sections.map((s) => s.offsetTop);
   fitTitles();
+  measureTextBoxes();
   if (!field) return;
   const [hw, hh] = field.visibleHalfSize();
   const portrait = innerWidth <= 820 || hw / hh < 1.05;
@@ -275,6 +311,33 @@ function measure() {
     if (side === 'left') return { x: hw * 0.43 + dx, y: 0, s };
     if (side === 'right') return { x: -hw * 0.43 + dx, y: 0, s };
     return { x: 0, y: outro ? hh * 0.5 : 0, s };
+  });
+}
+
+// 首页文字的位置（文档坐标），每帧只按 scrollY 换算成 NDC，不读取布局
+function measureTextBoxes() {
+  const pad = 8;
+  const union = (els) => {
+    const rs = els.filter(Boolean).map((e) => e.getBoundingClientRect());
+    if (!rs.length) return null;
+    return [
+      Math.min(...rs.map((r) => r.left)) - pad,
+      Math.min(...rs.map((r) => r.top)) + scrollY - pad,
+      Math.max(...rs.map((r) => r.right)) + pad,
+      Math.max(...rs.map((r) => r.bottom)) + scrollY + pad,
+    ];
+  };
+  const h = $('#hero');
+  heroBoxes = [union([$('.kicker', h), $('.title', h)]), union([$('.desc', h), $('.hero-cta', h), $('.tap-hint', h)])];
+}
+function updateTextBoxes(U) {
+  const W = innerWidth;
+  const H = innerHeight;
+  heroBoxes.forEach((b, i) => {
+    if (!b) return;
+    const top = b[1] - scrollY;
+    const bottom = b[3] - scrollY;
+    U.uTextBox.value[i].set((b[0] / W) * 2 - 1, 1 - (bottom / H) * 2, (b[2] / W) * 2 - 1, 1 - (top / H) * 2);
   });
 }
 
@@ -317,13 +380,28 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-const portraitAtLoad = innerWidth <= 820 || innerWidth / innerHeight < 1.05;
+const isPortrait = () => innerWidth <= 820 || innerWidth / innerHeight < 1.05;
+let heroPortrait = isPortrait();
 let ready = 0; // 已生成的形态数量
 let introT = -1;
+function loadShape(i) {
+  const { pos, col, meta } = generateShape(i, COUNT, { portrait: heroPortrait });
+  field.setShape(i, pos, col);
+  field.setMeta(i, meta);
+  metas[i] = meta;
+  if (i === 0) {
+    // 胞体位置用于“神经发生”生长动画（w = 胞体尺度）
+    const SU = field.uniforms.uSoma.value;
+    SU.forEach((v, k) => {
+      const sm = meta.somata && meta.somata[k];
+      if (sm) v.set(sm.p[0], sm.p[1], sm.p[2], sm.k);
+      else v.set(0, 0, 0, 0);
+    });
+  }
+}
 async function generateAll() {
   for (let i = 0; i < S; i++) {
-    const { pos, col } = generateShape(i, COUNT, { portrait: portraitAtLoad });
-    field.setShape(i, pos, col);
+    loadShape(i);
     ready = i + 1;
     loading.textContent = `正在生成神经粒子 ${ready} / ${S} · ${COUNT.toLocaleString('en-US')} 个粒子`;
     if (i === 0) introT = performance.now();
@@ -333,9 +411,30 @@ async function generateAll() {
   setTimeout(() => {
     loading.style.opacity = '0';
   }, 2600);
-  // 粒子就绪后，在空闲时提前离线渲染配乐分轨（渲染在音频线程完成，不占用画面帧）
-  setTimeout(() => audio.prepare(), 800);
 }
+// 横竖屏切换时重新生成首页（构图不同）
+let regenTimer = 0;
+addEventListener('resize', () => {
+  if (!field || ready < 1 || isPortrait() === heroPortrait) return;
+  clearTimeout(regenTimer);
+  regenTimer = setTimeout(() => {
+    heroPortrait = isPortrait();
+    loadShape(0);
+  }, 400);
+});
+
+// ---------- 首页“点火”：神经元生长完成后，第一束放电从左上方的神经元出发，依次点亮标题字母 ----------
+let ignited = false;
+function igniteTitles() {
+  if (ignited) return;
+  ignited = true;
+  document.documentElement.classList.add('ignite');
+  // 点火之后再在空闲时离线渲染配乐分轨，避免与开场动画争抢主线程
+  const prep = () => audio.prepare();
+  if (window.requestIdleCallback) requestIdleCallback(prep, { timeout: 4000 });
+  else setTimeout(prep, 1500);
+}
+setTimeout(igniteTitles, reduceMotion ? 0 : 4500);
 
 // ---------- 指针视差 ----------
 const mouse = { px: 0, py: 0 };
@@ -348,13 +447,17 @@ addEventListener(
   { passive: true },
 );
 
+const metas = [];
+let shapeNow = 0;
 const neuro = createInteractions({
   field,
   audio,
-  sections,
   dots,
   reduceMotion,
   accent: () => settings.accent / 100,
+  shapeMeta: (i) => metas[i],
+  currentShape: () => shapeNow,
+  onLtp: boostTitles,
 });
 
 // ---------- 主循环 ----------
@@ -362,6 +465,7 @@ let cur = 0;
 let active = -1;
 let last = performance.now();
 let time = 0;
+let stime = 0; // 传给着色器的时间，约每 68 分钟回卷一次
 let beat = 0;
 let flash = 0;
 let par = { x: 0, y: 0 };
@@ -387,7 +491,7 @@ function onSection(i) {
   audio.setLevel(LEVELS[i]);
   if (active !== -1) {
     audio.impact();
-    flash = 1;
+    flash = 0.5;
   }
   active = i;
 }
@@ -396,12 +500,17 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   time += dt;
+  stime += dt;
+  if (stime > 4096) {
+    stime -= 4096;
+    if (field) field.rebaseTime(4096);
+  }
 
   const target = scrollTarget();
   const sec = Math.round(target);
   if (sec !== active) onSection(sec);
   beat = Math.max(beat * Math.exp(-dt * 7), audio.pollBeats());
-  if (neuro.update(dt, now).ltp) flash = 1;
+  neuro.update(dt, now);
 
   if (field) {
     cur += (target - cur) * (1 - Math.exp(-dt * 5));
@@ -415,19 +524,33 @@ function frame(now) {
     U.uFrom.value = from;
     U.uTo.value = to;
     U.uMix.value = mix;
-    U.uTime.value = time;
+    U.uTime.value = stime;
 
-    const it = introT < 0 ? 0 : Math.min(1, (now - introT) / (reduceMotion ? 800 : 2800));
+    const it = introT < 0 ? 0 : Math.min(1, (now - introT) / (reduceMotion ? 800 : 3200));
     U.uIntro.value = 1 - Math.pow(1 - it, 2);
+    // 神经发生：首页加载后 0.2–3.2 秒内，树突与轴突从胞体向外生长；生长完成即点火
+    let grow = introT < 0 ? 0 : clamp((now - introT - 200) / 3000, 0, 1);
+    grow = 1 - Math.pow(1 - grow, 2);
+    if (reduceMotion || cur > 0.05 || ignited) grow = 1;
+    if (grow >= 1 && !ignited && introT >= 0) {
+      if (!reduceMotion && cur <= 0.05) neuro.ignite();
+      igniteTitles();
+      pendingFirstSpike = false;
+    }
+    U.uGrow.value = grow;
+    shapeNow = mix < 0.5 ? from : to;
+    // 首页文字区域的粒子略微变暗（随滚动离开首页而消失）
+    U.uTextDim.value = 1 - smoothstep(0, 0.6, cur);
+    if (U.uTextDim.value > 0) updateTextBoxes(U);
 
     flash *= Math.exp(-dt * 3.2);
     U.uBeat.value = beat;
     U.uFlash.value = flash;
 
     // 形态稳定下来后，让它按自己的生理方向“首次放电”（树突→胞体→轴突、EC→DG→CA3→CA1、脑→脊髓→四肢…）
-    if (pendingFirstSpike && it >= 1 && Math.abs(target - cur) < 0.03 && ready > Math.round(target)) {
+    if (pendingFirstSpike && ignited && it >= 1 && Math.abs(target - cur) < 0.03 && ready > Math.round(target)) {
       pendingFirstSpike = false;
-      neuro.firstSpike();
+      neuro.arrive(Math.round(target));
     }
     par.x += (mouse.px - par.x) * (1 - Math.exp(-dt * 2));
     par.y += (mouse.py - par.y) * (1 - Math.exp(-dt * 2));
@@ -438,10 +561,13 @@ function frame(now) {
     g.position.x = lerp(la.x, lb.x, mix);
     g.position.y = lerp(la.y, lb.y, mix);
     g.scale.setScalar(lerp(la.s, lb.s, mix) * (1 + beat * 0.012));
-    g.rotation.y = lerpAngle(shapeAngle(from, time), shapeAngle(to, time), mix) + par.x * 0.22;
-    g.rotation.x = lerp(SHAPES[from].tilt, SHAPES[to].tilt, mix) - par.y * 0.12;
+    const parK = lerp(SHAPES[from].par ?? 1, SHAPES[to].par ?? 1, mix);
+    g.rotation.y = lerpAngle(shapeAngle(from, time), shapeAngle(to, time), mix) + par.x * 0.22 * parK;
+    g.rotation.x = lerp(SHAPES[from].tilt, SHAPES[to].tilt, mix) - par.y * 0.12 * parK;
 
-    field.setWarp(Math.sin(Math.PI * mix), !reduceMotion && !small);
+    // 光迹多两次全分辨率半浮点 pass：只在像素量适中的设备上启用
+    const cv = field.renderer.domElement;
+    field.setWarp(Math.sin(Math.PI * mix), !reduceMotion && !small && cv.width * cv.height < 4.2e6);
     field.render();
   }
   requestAnimationFrame(frame);

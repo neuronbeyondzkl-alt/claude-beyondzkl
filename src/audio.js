@@ -15,6 +15,9 @@ const STEPS = 256; // 16 小节 × 16
 const LOOP = STEPS * STEP; // ≈ 28.235 s
 const TAIL = 4.0; // 混响 / 释音尾巴，渲染后折回循环开头，保证无缝
 const SR = 32000;
+// 循环长度取整到采样点：所有分轨与侧链包络使用同一个精确长度，长时间播放也不会彼此漂移
+const LOOP_N = Math.round(LOOP * SR);
+const LOOP_EXACT = LOOP_N / SR;
 
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 // 全部分轨在最高层级叠加的实测峰值约 1.47（渲染是确定性的），据此把音乐总线定在峰值约 0.9
@@ -446,7 +449,7 @@ function makeBuffer(channels, length, sampleRate) {
 const SEG_BARS = 4;
 async function renderStem(key) {
   const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  const n = Math.round(LOOP * SR);
+  const n = LOOP_N;
   const acc = [new Float32Array(n), new Float32Array(n)];
   const segSteps = SEG_BARS * 16;
   for (let s0 = 0; s0 < STEPS; s0 += segSteps) {
@@ -454,6 +457,8 @@ async function renderStem(key) {
     const ctx = new OAC(2, Math.ceil((segSteps * STEP + TAIL) * SR), SR);
     scoreStem(key, new Studio(ctx, tOff), s0, s0 + segSteps);
     const r = await ctx.startRendering();
+    // 段与段之间让出主线程
+    await new Promise((res) => setTimeout(res, 0));
     const start = Math.round(tOff * SR);
     for (let c = 0; c < 2; c++) {
       const d = r.getChannelData(c);
@@ -530,19 +535,22 @@ function buildSpike(ctx, st) {
   n.connect(bp).connect(ng).connect(ctx.destination);
 }
 
-// 侧链“抽吸”包络：一拍长的控制信号，循环播放，接到和弦垫的增益参数上（音频速率，无阶跃）
-function buildDuckCurve(sampleRate) {
-  const n = Math.round(BEAT * sampleRate);
-  const buf = makeBuffer(1, n + 2, sampleRate);
+// 侧链“抽吸”包络：与分轨等长、同采样率的控制信号，循环播放并接到和弦垫的增益参数上（音频速率，无阶跃）
+function buildDuckCurve() {
+  const buf = makeBuffer(1, LOOP_N + 2, SR);
   const d = buf.getChannelData(0);
-  const attack = 0.006 * sampleRate;
-  for (let i = 0; i < n; i++) {
-    const t = i / sampleRate;
-    const down = i < attack ? i / attack : Math.exp(-(t - 0.006) / 0.09);
-    d[i] = -down; // 0 → -1 → 0
+  const attack = 0.006;
+  for (let beat = 0; beat < STEPS / 4; beat++) {
+    const t0 = beat * 4 * STEP;
+    const i0 = Math.round(t0 * SR);
+    const i1 = Math.min(LOOP_N, Math.round((t0 + BEAT) * SR));
+    for (let i = i0; i < i1; i++) {
+      const t = i / SR - t0;
+      d[i] = -(t < attack ? t / attack : Math.exp(-(t - attack) / 0.09)); // 0 → -1 → 0
+    }
   }
-  d[n] = d[0];
-  d[n + 1] = d[1];
+  d[LOOP_N] = d[0];
+  d[LOOP_N + 1] = d[1];
   return buf;
 }
 
@@ -575,7 +583,7 @@ export class Soundtrack {
 
   // UI 状态：off | loading | on | blocked
   get uiState() {
-    if (!this.desired) return 'off';
+    if (!this.desired) return this.status === 'error' && !this.buffers.pad ? 'error' : 'off';
     if (!this.ctx || this.loopT0 == null) return 'loading';
     if (this.ctx.state !== 'running') return 'blocked';
     return 'on';
@@ -594,6 +602,7 @@ export class Soundtrack {
   // 预渲染全部分轨（不需要用户手势，可在页面空闲时提前进行）
   prepare() {
     if (this.preparing) return this.preparing;
+    this.status = 'preparing'; // 同步改掉上一次的 'error'，否则 start() 的等待会立即结束
     this.preparing = (async () => {
       try {
         this.sfx.impact = await renderOneShot(1.7, buildImpact);
@@ -607,6 +616,7 @@ export class Soundtrack {
         this._emit('ready');
       } catch (e) {
         console.warn('配乐预渲染失败', e);
+        this.preparing = null; // 允许下次点击重试
         this._emit('error');
       }
     })();
@@ -643,7 +653,7 @@ export class Soundtrack {
     this.music.gain.value = MUSIC_TRIM;
     this.music.connect(this.master);
     this.sfxBus = ctx.createGain();
-    this.sfxBus.gain.value = 0.8;
+    this.sfxBus.gain.value = 0.65;
     this.sfxBus.connect(this.master);
 
     // 和弦垫：实时低通决定各层级的明暗，再经侧链“抽吸”
@@ -662,14 +672,16 @@ export class Soundtrack {
       const g = ctx.createGain();
       g.gain.value = 0;
       g.connect(s.key === 'pad' ? this.padLP : this.music);
-      this.stems[s.key] = { gain: g, src: null };
+      this.stems[s.key] = { gain: g, src: null, startAt: 0 };
     }
 
     ctx.addEventListener('statechange', () => {
       // 来电、其他应用抢占音频焦点、iOS interrupted 等：标记为“点击恢复”
       this._emit();
     });
-    const gesture = () => {
+    // 点在配乐按钮上时交给按钮自己处理：否则这里先把音频恢复，按钮读到“已开启”反而会把配乐关掉
+    const gesture = (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-sound-toggle]')) return;
       if (this.desired && !document.hidden && this.ctx.state !== 'running') {
         this.ctx.resume().then(() => this._fadeIn(), () => {});
       }
@@ -683,7 +695,7 @@ export class Soundtrack {
   }
 
   _loopPos(when) {
-    return (((when - this.loopT0) % LOOP) + LOOP) % LOOP;
+    return (((when - this.loopT0) % LOOP_EXACT) + LOOP_EXACT) % LOOP_EXACT;
   }
 
   _startStem(key, late = false) {
@@ -698,21 +710,27 @@ export class Soundtrack {
     src.buffer = buf;
     src.loop = true;
     src.loopStart = 0;
-    src.loopEnd = LOOP;
+    src.loopEnd = LOOP_EXACT;
     src.connect(stem.gain);
     src.start(when, this._loopPos(when));
     stem.src = src;
-    this._applyLevel(true);
+    stem.startAt = when;
+    // 分轨从循环中途切入时波形不在零点：增益先归零，到切入时刻再用 20 ms 淡入，避免“咔哒”声
+    const s = STEMS.find((x) => x.key === key);
+    const g = stem.gain.gain;
+    g.cancelScheduledValues(ctx.currentTime);
+    g.setValueAtTime(0, ctx.currentTime);
+    if (s.level <= this.level) g.setTargetAtTime(s.trim, when, 0.02);
   }
 
   _startClock() {
     const ctx = this.ctx;
     this.loopT0 = ctx.currentTime + 0.1;
     const duck = ctx.createBufferSource();
-    duck.buffer = buildDuckCurve(ctx.sampleRate);
+    duck.buffer = buildDuckCurve();
     duck.loop = true;
     duck.loopStart = 0;
-    duck.loopEnd = BEAT;
+    duck.loopEnd = LOOP_EXACT;
     duck.connect(this.duckDepth);
     duck.start(this.loopT0);
     for (const s of STEMS) this._startStem(s.key);
@@ -759,6 +777,12 @@ export class Soundtrack {
           check();
         });
         if (!this.desired) return;
+        if (!this.buffers.pad) {
+          // 预渲染失败：不要假装在播放
+          this.desired = false;
+          this._emit();
+          return;
+        }
         this._startClock();
       }
       if (!this.desired) return;
@@ -811,11 +835,22 @@ export class Soundtrack {
     // 新层在下一拍进入，旧层立即淡出
     const nextBeat = this.loopT0 == null ? now : this.loopT0 + Math.ceil((now + 0.03 - this.loopT0) / BEAT) * BEAT;
     for (const s of STEMS) {
-      const on = s.level <= this.level && !!this.stems[s.key].src;
+      if (!this.stems[s.key].src) continue; // 尚未起播的分轨由 _startStem 负责淡入
+      const on = s.level <= this.level;
       const g = this.stems[s.key].gain.gain;
-      if (immediate) g.setTargetAtTime(on ? s.trim : 0, now, 0.03);
-      else if (on) g.setTargetAtTime(s.trim, Math.max(now, nextBeat - 0.02), 0.06);
-      else g.setTargetAtTime(0, now, 0.45);
+      // 先撤销还没执行的自动化：否则“下一拍开启”会在快速来回滚动后覆盖掉“立即关闭”
+      if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(now);
+      else {
+        const v = g.value;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(v, now);
+      }
+      const startAt = this.stems[s.key].startAt;
+      const pending = startAt > now; // 已排程、但还没真正开始发声的分轨：仍在切入时刻淡入
+      if (!on) g.setTargetAtTime(0, now, immediate || pending ? 0.03 : 0.45);
+      else if (pending) g.setTargetAtTime(s.trim, startAt, 0.02);
+      else if (immediate) g.setTargetAtTime(s.trim, now, 0.03);
+      else g.setTargetAtTime(s.trim, Math.max(now, nextBeat - 0.02), 0.06);
     }
     this.padLP.frequency.setTargetAtTime(padCut(this.level), now, 0.5);
     this.duckDepth.gain.setTargetAtTime(this.level >= 2 ? 0.42 : 0.1, now, 0.3);
@@ -865,20 +900,25 @@ export class Soundtrack {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     if (now - this.lastImpact < 0.7) return;
-    if (this._playSfx(this.sfx.impact, 0.8)) this.lastImpact = now;
+    if (this._playSfx(this.sfx.impact, 0.6)) this.lastImpact = now;
   }
 
-  // 点击触发的动作电位声：频率越高，音调越高、越短促；最多 8 个同时发声，超出时淡出最早的
+  // 点击触发的动作电位声：频率越高音调越高；最短间隔 60 ms，最多 6 个同时发声（超出时淡出最早的），
+  // 高频连点时降低单声增益，避免叠加后撞到限幅器
   spike(rateHz = 0) {
-    const v = this._playSfx(this.sfx.spike, 0.38, 1 + Math.min(1, rateHz / 8) * 0.6);
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (now - (this.lastSpike || -1) < 0.06) return;
+    const gain = 0.38 / (1 + 0.12 * Math.max(0, rateHz - 3));
+    const v = this._playSfx(this.sfx.spike, gain, 1 + Math.min(1, rateHz / 8) * 0.6);
     if (!v) return;
+    this.lastSpike = now;
     this.clicks.push(v);
-    if (this.clicks.length > 8) {
+    if (this.clicks.length > 6) {
       const old = this.clicks.shift();
-      const t = this.ctx.currentTime;
-      old.g.gain.setTargetAtTime(0, t, 0.008);
+      old.g.gain.setTargetAtTime(0, now, 0.008);
       try {
-        old.src.stop(t + 0.05);
+        old.src.stop(now + 0.05);
       } catch (e) {
         /* 已结束 */
       }

@@ -31,6 +31,7 @@
 [hidden] { display: none !important; }
 
 html {
+  touch-action: manipulation;
   scroll-behavior: smooth;
   scroll-snap-type: y proximity;
   background: var(--void);
@@ -38,6 +39,9 @@ html {
 
 body {
   margin: 0;
+  -webkit-tap-highlight-color: transparent;
+  /* 关掉 iOS 的双击缩放：首页需要快速连点（滚动与双指缩放不受影响） */
+  touch-action: manipulation;
   background: var(--void);
   color: var(--ink-2);
   font-family: var(--font-zh);
@@ -71,15 +75,23 @@ body {
 .neon {
   font-family: var(--font-display);
   font-weight: var(--display-weight);
+  font-synthesis: none;
   text-transform: uppercase;
   color: transparent;
-  -webkit-text-stroke: calc(0.011em + 0.6px) var(--neon-stroke);
-  filter: var(--neon-filter);
+  -webkit-text-stroke: calc(0.012em + 0.5px) var(--neon-stroke);
+  user-select: none;
+  -webkit-user-select: none;
+  /* 外发光只给当前层级的标题与品牌标记：滤镜代价高，不在看不见的标题上浪费 */
+  filter: none;
+  transition: filter 0.6s ease;
   letter-spacing: 0.02em;
   line-height: 0.95;
   margin: 0;
   text-wrap: balance;
 }
+.sec.is-active .neon,
+.brand-mark { filter: var(--neon-filter); }
+.title { contain: paint; }
 .neon .line {
   display: block;
   width: fit-content;
@@ -240,6 +252,7 @@ body {
   border: 1px solid #376392;
   pointer-events: none;
 }
+.dots .rail-ap::before { content: none; }
 .dots .rail-ap {
   position: absolute;
   left: 50%;
@@ -572,7 +585,7 @@ main { position: relative; z-index: 5; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.tap-hint { margin: 0; font-size: 12px; color: var(--mid); letter-spacing: 0.12em; }
+.tap-hint { margin: 0; font-size: 12px; color: var(--mid); letter-spacing: 0.12em; text-wrap: balance; }
 .field-title { font-size: 13px; color: var(--ink-2); letter-spacing: 0.06em; }
 
 /* ---------- 刺激点涟漪 / 突触小体光标 / LTP 提示 ---------- */
@@ -648,9 +661,15 @@ main { position: relative; z-index: 5; }
 .toast span { font-size: 11.5px; color: var(--ink-3); }
 
 /* 标题“去极化扫过”：进入层级时，描边颜色像动作电位一样从左到右亮起一次（只改描边色，不动滤镜） */
-.js .sec.is-active .neon .ch {
+.js.ignite .sec:not(.hero).is-active .neon .ch {
   animation: ch-fire 0.65s ease-out both;
   animation-delay: calc(0.35s + var(--i) * 28ms);
+}
+/* 首页点火：神经元生长完成前，标题字母处于“静息”的暗蓝；第一束放电经过时依次点亮 */
+.js:not(.ignite) .hero .neon .ch { opacity: 0.22; -webkit-text-stroke-color: #376392; }
+.js.ignite .hero.is-active .neon .ch {
+  transition: opacity 0.25s, -webkit-text-stroke-color 0.4s, transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition-delay: calc(0.35s + var(--i) * 110ms);
 }
 @keyframes ch-fire {
   35% { -webkit-text-stroke-color: #ccdbeb; }
@@ -696,6 +715,7 @@ main { position: relative; z-index: 5; }
   .js .sec .reveal { transition: none; }
   .hint::after,
   .pill[aria-pressed='true'] .eq i,
-  .js .sec.is-active .neon .ch { animation: none; }
+  .js.ignite .sec:not(.hero).is-active .neon .ch { animation: none; }
+  .js.ignite .hero.is-active .neon .ch { transition: none; }
   .bouton { display: none; }
 }

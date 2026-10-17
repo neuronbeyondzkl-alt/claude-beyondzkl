@@ -26,7 +26,7 @@
     <span class="brand-text">神经可塑性 · 粒子叙事</span>
   </a>
   <div class="top-actions">
-    <button id="soundBtn" class="pill" type="button" aria-pressed="false">
+    <button id="soundBtn" class="pill" type="button" data-sound-toggle aria-pressed="false">
       <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
       <span class="label">开启配乐</span>
     </button>
@@ -93,7 +93,7 @@
 
 <nav aria-label="层级导航"><ol class="dots" id="dots"></ol></nav>
 
-<div class="toast" id="ltpToast" role="status" hidden></div>
+<div class="toast" id="ltpToast" role="status"></div>
 <div class="stim-layer" id="stimLayer" aria-hidden="true"></div>
 <div class="bouton" id="bouton" aria-hidden="true">
   <svg viewBox="0 0 28 28" width="28" height="28"><circle class="b-ring" cx="14" cy="14" r="11"/><circle class="b-arc" cx="14" cy="14" r="11"/><circle class="b-dot" cx="14" cy="14" r="2.2"/></svg>
@@ -113,7 +113,7 @@
       <h1 class="title neon fit" data-size="hero"><span class="line">Neuroplasticity</span></h1>
       <p class="desc reveal">神经可塑性，是大脑根据经验、学习与损伤，持续改写自身结构与功能的能力。它让你学会新技能，也让受损的大脑重新找回失去的功能。</p>
       <div class="hero-cta reveal">
-        <button id="heroPlay" class="pill cta" type="button">▶ 点燃配乐</button>
+        <button id="heroPlay" class="pill cta" type="button" data-sound-toggle>▶ 点燃配乐</button>
         <span class="hint">向下滚动 · 进入第一层</span>
       </div>
       <p class="tap-hint reveal">点击任意神经元，触发一次动作电位；点得越快，电流越快</p>

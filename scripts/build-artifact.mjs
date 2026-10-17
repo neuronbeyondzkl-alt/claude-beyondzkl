@@ -13,5 +13,6 @@ head = head.replace(/<!--CSS-->[\s\S]*?<!--\/CSS-->/, () => `<style>\n${css}\n</
 body = body.replace(/<!--JS-->[\s\S]*?<!--\/JS-->/, () => `<script>\n${js}\n</script>`);
 
 mkdirSync('dist', { recursive: true });
-writeFileSync('dist/neuroplasticity.html', `${head.trim()}\n${body.trim()}\n`);
+// 开头保留字符集声明：单独双击打开时中文不会乱码；套进 Artifact 外壳时重复声明会被浏览器忽略
+writeFileSync('dist/neuroplasticity.html', `<meta charset="utf-8">\n${head.trim()}\n${body.trim()}\n`);
 console.log('dist/neuroplasticity.html written');
