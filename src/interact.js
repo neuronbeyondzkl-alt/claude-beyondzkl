@@ -14,6 +14,7 @@ const UI_SEL = 'a,button,input,select,label,textarea,.panel,.topbar,.dots,.hud';
 export function createInteractions({ field, audio, dots, reduceMotion, accent, shapeMeta, currentShape, onLtp }) {
   const fire = { last: -1, rate: 0, rateSlow: 0, k: 0, M: 0, spikes: [], ltpCool: 0, ltp: 0 };
   const hov = { x: 9, y: 9, on: 0, onTarget: 0, V: 0, speed: 0, lastMove: -10, lastT: 0, phase: 0 };
+  let lastMs = -1; // 上一帧的时间戳（毫秒），用于按真实时间衰减放电频率
   let phase = 0;
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const wideScreen = matchMedia('(min-width: 821px)');
@@ -35,7 +36,7 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
   const vmRead = document.getElementById('vmRead');
   const vmCtx = vm ? vm.getContext('2d') : null;
   const hoverHist = []; // [t, V]
-  const trail = []; // 赫布尾迹：[x, y, s0, t]
+  const trail = []; // 增强尾迹（短时增强，示意）：[x, y, s0, t]
 
   // ---------- 指针 ----------
   const toNdc = (e) => [(e.clientX / innerWidth) * 2 - 1, -((e.clientY / innerHeight) * 2 - 1)];
@@ -127,7 +128,7 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
     const now = performance.now() / 1000;
     const isi = now - fire.last;
     if (fire.last > 0 && isi < 0.035) {
-      ring(cx, cy, true); // 绝对不应期：没有动作电位
+      ring(cx, cy, true); // 点击防抖（示意绝对不应期；真实的约 1–2 ms）：没有动作电位
       return;
     }
     fire.last = now;
@@ -374,8 +375,11 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
   let nextSpont = 5;
   function update(dt, now) {
     const t = now / 1000;
-    fire.rate *= Math.exp(-dt / 0.9);
-    fire.rateSlow *= Math.exp(-dt / 3.0);
+    // 放电频率按真实时间衰减（帧时间会被截到 50 ms，掉帧时用它会让频率估计偏高、低频区失去分辨）
+    const realDt = lastMs < 0 ? dt : Math.min(30, Math.max(0, (now - lastMs) / 1000));
+    lastMs = now;
+    fire.rate *= Math.exp(-realDt / 0.9);
+    fire.rateSlow *= Math.exp(-realDt / 3.0);
     // 兴奋度 k：1 Hz ≈ 0.25，2 Hz ≈ 0.44，4 Hz ≈ 0.68，8 Hz ≈ 0.90；上升快（60 ms）、回落慢（0.5 s）
     let kT = 1 - Math.exp(-fire.rate / 3.5);
     if (reduceMotion) kT = Math.min(kT, 0.5);

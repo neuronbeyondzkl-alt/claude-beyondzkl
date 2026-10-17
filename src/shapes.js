@@ -470,7 +470,8 @@ function shapeHero(b, opts = {}) {
       R,
     );
     const nSoma = Math.round(count * 0.13);
-    const nBouton = nr.boutons.length ? Math.round(count * 0.05) : 0;
+    // 每个突触小体最多约 40 个粒子（按总粒子数缩放），否则会挤成常亮的琥珀/白色光球，被 Bloom 放大
+    const nBouton = nr.boutons.length ? Math.min(Math.round(count * 0.05), Math.round((40 * b.n * nr.boutons.length) / 32768)) : 0;
     const nAis = Math.round(count * 0.015);
     for (let k = 0; k < count; k++) {
       if (k < nSoma) {
@@ -494,8 +495,9 @@ function shapeHero(b, opts = {}) {
       if (k < nSoma + nAis + nBouton) {
         const bt = nr.boutons[k % nr.boutons.length];
         const r = R();
-        const acc = r < 0.6;
-        b.addP(add(bt.c, mul(onSphere(R), 0.06 * nr.k * Math.cbrt(R()))), B0 + (nr.dMax + bt.dist) / SP, r < 0.45 ? PAL.amber : r < 0.6 ? PAL.lav : PAL.c20, 1.15, acc && !dim);
+        const acc = r < 0.32;
+        // 路径值略加抖动：放电时小体逐粒闪亮，而不是整团同时爆亮；主体仍为低饱和蓝
+        b.addP(add(bt.c, mul(onSphere(R), 0.06 * nr.k * Math.cbrt(R()))), B0 + (nr.dMax + bt.dist) / SP + R() * 0.2, r < 0.2 ? PAL.amber : r < 0.32 ? PAL.lav : r < 0.7 ? PAL.c30 : PAL.c40, 1.0, acc && !dim);
         continue;
       }
       const sg = segs[pk()];
