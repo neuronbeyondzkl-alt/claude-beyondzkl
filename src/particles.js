@@ -1,5 +1,5 @@
 // WebGL 粒子场：所有形态存于浮点纹理，顶点着色器按滚动进度在两个形态间插值形变，
-// 叠加放电脉冲、点击诱发的动作电位波、悬停的赫布连接触须、节拍脉动与 Unreal Bloom 荧光辉光。
+// 叠加放电脉冲、点击诱发的动作电位波、悬停的阈下分级电位与增强尾迹、节拍脉动与 Unreal Bloom 荧光辉光。
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -190,8 +190,8 @@ void main() {
   float epsp = mix(1.0, 0.55 + 0.45 * cos(6.2831853 * (path * 2.0 - uHovPhase)), uMotion * neur);
   float chan = neur * step(0.84, fract(aRand.w * 91.7 + floor(uTime * (8.0 + 8.0 * aRand.x)) * 0.618034)) * (1.0 - smoothstep(0.0, 0.16, dm)) * uMotion;
   float dep = field * memb * (0.35 + 0.65 * uHoverV) * epsp + chan * field * 0.5;
-  // 赫布尾迹：光标扫过的路径被短暂“增强”（早期 LTP），发光并传递更强的电流，约 2.5 秒后衰减
-  float hebb = 0.0;
+  // 增强尾迹（短时增强，示意）：光标扫过的路径被短暂“增强”，发光并传递更强的电流，约 2.5 秒后衰减
+  float trailB = 0.0;
   vec2 asp = vec2(uAspect, 1.0);
   for (int i = 0; i < 15; i++) {
     vec4 a = uTrail[i];
@@ -201,10 +201,10 @@ void main() {
     vec2 ba = (b.xy - a.xy) * asp;
     float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
     vec2 q = pa - ba * h;
-    hebb = max(hebb, mix(a.z, b.z, h) * exp(-dot(q, q) / 0.0036));
+    trailB = max(trailB, mix(a.z, b.z, h) * exp(-dot(q, q) / 0.0036));
   }
-  hebb *= (neur > 0.5 ? 1.0 : 0.2) * uMotion;
-  spark *= (1.0 + 1.4 * hebb) * (1.0 + 0.5 * uLTP);
+  trailB *= (neur > 0.5 ? 1.0 : 0.2) * uMotion;
+  spark *= (1.0 + 1.4 * trailB) * (1.0 + 0.5 * uLTP);
 
   // 首页文字背后的“遮罩”：标题与描述区域内的粒子略微变暗，保证可读性
   float inT = smoothstep(0.0, 0.04, min(min(ndc.x - uTextBox[0].x, uTextBox[0].z - ndc.x), min(ndc.y - uTextBox[0].y, uTextBox[0].w - ndc.y)));
@@ -218,19 +218,19 @@ void main() {
   float depth = max(0.5, -mv.z);
   float pulse = 1.0 + uBeat * 0.28 * aRand.y + uFlash * 0.5;
   // 尺寸增益封顶（×3），避免高荧光 + 密集放电时的填充率爆炸
-  float boost = min(spark * 1.8 + wv * 1.5 + dep * 0.25 + hebb * 0.25 + ca * 0.5 + cone * 1.2, 2.0);
+  float boost = min(spark * 1.8 + wv * 1.5 + dep * 0.25 + trailB * 0.25 + ca * 0.5 + cone * 1.2, 2.0);
   gl_PointSize = uSize * sizeMul * (0.65 + aRand.y * 0.7) * uPR * (11.0 / depth) * (1.0 + boost) * pulse * (0.78 + 0.22 * uGlow) * born;
   gl_PointSize = min(gl_PointSize, 40.0 * uPR);
 
-  float bright = (0.28 + 0.72 * uGlow) * (0.9 + uBeat * 0.22 + uFlash * 0.55) * (1.0 - 0.45 * refr) * (1.0 + 0.6 * hebb)
+  float bright = (0.28 + 0.72 * uGlow) * (0.9 + uBeat * 0.22 + uFlash * 0.55) * (1.0 - 0.45 * refr) * (1.0 + 0.6 * trailB)
                * (1.0 + 0.25 * uLTP * neur) * veil;
-  col = mix(col, uDepolCol, 0.3 * hebb);
+  col = mix(col, uDepolCol, 0.3 * trailB);
   float hot = 0.7 + 1.1 * uGlow;
   // 峰电位顶端才是琥珀色（全或无），阈下的分级电位始终保持低饱和蓝
   vec3 apCol = mix(uDepolCol, mix(uDepolCol, uSparkWarm, uAccent), smoothstep(0.55, 1.0, wv));
   vColor = col * bright + sparkCol * spark * hot
          + apCol * wv * hot * 0.9
-         + uDepolCol * (dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + hebb * 0.35 + cone * 0.9);
+         + uDepolCol * (dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + trailB * 0.35 + cone * 0.9);
   vAlpha = (0.55 + 0.45 * aRand.z) * (0.2 + 0.8 * ie) * born;
   vSoft = uGlow;
 }

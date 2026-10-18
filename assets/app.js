@@ -4635,8 +4635,8 @@ void main() {
   float epsp = mix(1.0, 0.55 + 0.45 * cos(6.2831853 * (path * 2.0 - uHovPhase)), uMotion * neur);
   float chan = neur * step(0.84, fract(aRand.w * 91.7 + floor(uTime * (8.0 + 8.0 * aRand.x)) * 0.618034)) * (1.0 - smoothstep(0.0, 0.16, dm)) * uMotion;
   float dep = field * memb * (0.35 + 0.65 * uHoverV) * epsp + chan * field * 0.5;
-  // \u8D6B\u5E03\u5C3E\u8FF9\uFF1A\u5149\u6807\u626B\u8FC7\u7684\u8DEF\u5F84\u88AB\u77ED\u6682\u201C\u589E\u5F3A\u201D\uFF08\u65E9\u671F LTP\uFF09\uFF0C\u53D1\u5149\u5E76\u4F20\u9012\u66F4\u5F3A\u7684\u7535\u6D41\uFF0C\u7EA6 2.5 \u79D2\u540E\u8870\u51CF
-  float hebb = 0.0;
+  // \u589E\u5F3A\u5C3E\u8FF9\uFF08\u77ED\u65F6\u589E\u5F3A\uFF0C\u793A\u610F\uFF09\uFF1A\u5149\u6807\u626B\u8FC7\u7684\u8DEF\u5F84\u88AB\u77ED\u6682\u201C\u589E\u5F3A\u201D\uFF0C\u53D1\u5149\u5E76\u4F20\u9012\u66F4\u5F3A\u7684\u7535\u6D41\uFF0C\u7EA6 2.5 \u79D2\u540E\u8870\u51CF
+  float trailB = 0.0;
   vec2 asp = vec2(uAspect, 1.0);
   for (int i = 0; i < 15; i++) {
     vec4 a = uTrail[i];
@@ -4646,10 +4646,10 @@ void main() {
     vec2 ba = (b.xy - a.xy) * asp;
     float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
     vec2 q = pa - ba * h;
-    hebb = max(hebb, mix(a.z, b.z, h) * exp(-dot(q, q) / 0.0036));
+    trailB = max(trailB, mix(a.z, b.z, h) * exp(-dot(q, q) / 0.0036));
   }
-  hebb *= (neur > 0.5 ? 1.0 : 0.2) * uMotion;
-  spark *= (1.0 + 1.4 * hebb) * (1.0 + 0.5 * uLTP);
+  trailB *= (neur > 0.5 ? 1.0 : 0.2) * uMotion;
+  spark *= (1.0 + 1.4 * trailB) * (1.0 + 0.5 * uLTP);
 
   // \u9996\u9875\u6587\u5B57\u80CC\u540E\u7684\u201C\u906E\u7F69\u201D\uFF1A\u6807\u9898\u4E0E\u63CF\u8FF0\u533A\u57DF\u5185\u7684\u7C92\u5B50\u7565\u5FAE\u53D8\u6697\uFF0C\u4FDD\u8BC1\u53EF\u8BFB\u6027
   float inT = smoothstep(0.0, 0.04, min(min(ndc.x - uTextBox[0].x, uTextBox[0].z - ndc.x), min(ndc.y - uTextBox[0].y, uTextBox[0].w - ndc.y)));
@@ -4663,19 +4663,19 @@ void main() {
   float depth = max(0.5, -mv.z);
   float pulse = 1.0 + uBeat * 0.28 * aRand.y + uFlash * 0.5;
   // \u5C3A\u5BF8\u589E\u76CA\u5C01\u9876\uFF08\xD73\uFF09\uFF0C\u907F\u514D\u9AD8\u8367\u5149 + \u5BC6\u96C6\u653E\u7535\u65F6\u7684\u586B\u5145\u7387\u7206\u70B8
-  float boost = min(spark * 1.8 + wv * 1.5 + dep * 0.25 + hebb * 0.25 + ca * 0.5 + cone * 1.2, 2.0);
+  float boost = min(spark * 1.8 + wv * 1.5 + dep * 0.25 + trailB * 0.25 + ca * 0.5 + cone * 1.2, 2.0);
   gl_PointSize = uSize * sizeMul * (0.65 + aRand.y * 0.7) * uPR * (11.0 / depth) * (1.0 + boost) * pulse * (0.78 + 0.22 * uGlow) * born;
   gl_PointSize = min(gl_PointSize, 40.0 * uPR);
 
-  float bright = (0.28 + 0.72 * uGlow) * (0.9 + uBeat * 0.22 + uFlash * 0.55) * (1.0 - 0.45 * refr) * (1.0 + 0.6 * hebb)
+  float bright = (0.28 + 0.72 * uGlow) * (0.9 + uBeat * 0.22 + uFlash * 0.55) * (1.0 - 0.45 * refr) * (1.0 + 0.6 * trailB)
                * (1.0 + 0.25 * uLTP * neur) * veil;
-  col = mix(col, uDepolCol, 0.3 * hebb);
+  col = mix(col, uDepolCol, 0.3 * trailB);
   float hot = 0.7 + 1.1 * uGlow;
   // \u5CF0\u7535\u4F4D\u9876\u7AEF\u624D\u662F\u7425\u73C0\u8272\uFF08\u5168\u6216\u65E0\uFF09\uFF0C\u9608\u4E0B\u7684\u5206\u7EA7\u7535\u4F4D\u59CB\u7EC8\u4FDD\u6301\u4F4E\u9971\u548C\u84DD
   vec3 apCol = mix(uDepolCol, mix(uDepolCol, uSparkWarm, uAccent), smoothstep(0.55, 1.0, wv));
   vColor = col * bright + sparkCol * spark * hot
          + apCol * wv * hot * 0.9
-         + uDepolCol * (dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + hebb * 0.35 + cone * 0.9);
+         + uDepolCol * (dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + trailB * 0.35 + cone * 0.9);
   vAlpha = (0.55 + 0.45 * aRand.z) * (0.2 + 0.8 * ie) * born;
   vSoft = uGlow;
 }
