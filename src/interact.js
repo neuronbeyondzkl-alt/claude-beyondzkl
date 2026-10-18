@@ -1,5 +1,5 @@
 // 神经主题交互：
-//  · 点击 = 超阈值的电流注入 → 全或无的动作电位，从被点中的神经突出发，沿“树突→胞体→轴突→下一个神经元”顺向传播
+//  · 点击 = 超阈值的电流注入：树突上是递减的分级电位，到胞体 / 轴突起始段再生为全或无的动作电位，沿轴突全幅传到下一个神经元
 //  · 点击频率用指数核估计（与电生理里估计瞬时放电率的方法相同）；频率越高，在途与全局的电流流速都越快
 //  · 悬停 = 阈下分级电位：会时间总和，但永远不越过阈值；只有点击才产生峰电位
 //  · 膜电位示波器、导航上的跳跃式传导、刺激点涟漪、高频刺激诱导 LTP 的提示
@@ -149,7 +149,10 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
     const [nx, ny] = [(cx / innerWidth) * 2 - 1, -((cy / innerHeight) * 2 - 1)];
     const hit = field.pickLocal(nx, ny, 0.14);
     if (hit.path >= 0) {
-      field.emitWave(hit.p, { strength: amp, seedPath: hit.path, gate: true, ceil: field.bandTop(hit.shape, hit.path) });
+      // 衰减放慢：动作电位在轴突上是全幅、不递减的，强度只随时间缓慢收尾；树突上的递减由着色器按距离计算
+      // 点在树突上：分级电位以 3 倍速电紧张性地扩布到本神经元的胞体，再在那里发放
+      const toSoma = hit.dend && hit.somaPath > hit.path ? hit.somaPath : -1;
+      field.emitWave(hit.p, { strength: amp, seedPath: hit.path, gate: true, decay: 0.16, ceil: field.bandTop(hit.shape, hit.path), fastUntil: toSoma, fastMul: 3 });
     } else {
       field.emitWave(hit.p, { strength: amp, seedPath: -1, gate: true });
     }

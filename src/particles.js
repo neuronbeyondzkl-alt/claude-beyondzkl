@@ -118,16 +118,22 @@ void main() {
   p = mix(ip, p, ie);
 
   // 颜色：点缀色可被“色彩丰富度”收回为低饱和蓝
-  float accA = step(9.5, cA.a);
-  float accB = step(9.5, cB.a);
+  // a 通道 = 尺寸 + 10×点缀 + 20×树突
+  float dendA = step(19.5, cA.a);
+  float dendB = step(19.5, cB.a);
+  float aA = cA.a - 20.0 * dendA;
+  float aB = cB.a - 20.0 * dendB;
+  float accA = step(9.5, aA);
+  float accB = step(9.5, aB);
   vec3 fallback = uBaseBlue * (0.75 + aRand.z * 0.5);
   vec3 colA = mix(cA.rgb, fallback, accA * (1.0 - uAccent));
   vec3 colB = mix(cB.rgb, fallback, accB * (1.0 - uAccent));
   vec3 col = mix(colA, colB, m);
-  float sizeMul = mix(cA.a - accA * 10.0, cB.a - accB * 10.0, m);
+  float sizeMul = mix(aA - accA * 10.0, aB - accB * 10.0, m);
 
   // 动作电位：沿路径参数传播的彗星状光点；uPhase 由 CPU 积分，点击越快流速越快
   float path = m < 0.5 ? pA.w : pB.w;
+  float dend = m < 0.5 ? dendA : dendB;
   float neur = (path >= 0.0 && path < 400.0) ? 1.0 : 0.0;
   float spark = 0.0;
   if (path >= 0.0) {
@@ -136,12 +142,16 @@ void main() {
   }
   spark *= (1.0 - burst) * uMotion;
   // 放电越密，琥珀色（动作电位）的比例越高
-  vec3 sparkCol = mix(uSparkCool, uSparkWarm, step(0.5 - 0.12 * uDrive, aRand.w) * uAccent);
+  // 树突上的光点是分级电位（只用蓝色），琥珀色只出现在胞体与轴突上
+  vec3 sparkCol = mix(uSparkCool, uSparkWarm, step(0.5 - 0.12 * uDrive, aRand.w) * uAccent * (1.0 - dend));
 
-  // 点击诱发的动作电位（每个槽位：W = 起点 xyz + 起始时间；Q = 空间门半径, 强度, 起始路径值, 当前波前路径值）
-  // 有路径的神经突：波前沿路径参数“顺向”传播（树突→胞体→轴突→下一个神经元），只在随时间扩张的空间门内点亮；
-  // 无路径的粒子（膜、星尘）：只感受到一圈径向的去极化环。波前之后是短暂变暗的不应期。
+  // 点击诱发的信号（每个槽位：W = 起点 xyz + 起始时间；Q = 空间门半径, 强度, 起始路径值, 当前波前路径值）
+  // 有路径的神经突：波前沿路径参数“顺向”传播，只在随时间扩张的空间门内点亮。
+  //   树突上是递减的分级电位（wg，低饱和蓝）；到胞体 / 轴突起始段才“再生”为全或无的动作电位（wv，琥珀色峰），
+  //   沿轴突以全幅传到突触，下一个神经元的树突上又是分级电位，到它的胞体再次发放。
+  // 无路径的粒子（膜、星尘）：只感受到一圈径向的去极化环。动作电位之后是短暂变暗的不应期。
   float wv = 0.0;
+  float wg = 0.0;
   float refr = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 W = uWaves[i];
@@ -158,10 +168,18 @@ void main() {
         float fp = path - Q.w;
         float head = exp(-fp * fp * uWaveSharp);
         float tail = fp < 0.0 ? exp(fp * 3.0) * 0.3 : 0.0;
-        wv = max(wv, (head + tail) * gate * fade);
-        refr = max(refr, (fp < -0.3 ? exp((fp + 0.3) * 1.2) : 0.0) * gate * fade * 0.8);
+        if (dend > 0.5) {
+          // 电紧张性扩布：离刺激点越远越弱
+          wg = max(wg, (head + tail) * gate * fade * 0.62 * exp(-max(0.0, path - Q.z) * 0.12));
+        } else {
+          wv = max(wv, (head + tail) * gate * fade);
+          refr = max(refr, (fp < -0.3 ? exp((fp + 0.3) * 1.2) : 0.0) * gate * fade * 0.8);
+        }
       }
-      wv = max(wv, exp(-d * d * 60.0) * exp(-age * 4.0) * fade);
+      // 刺激电极处的瞬间去极化：落在树突上是分级的，落在胞体上就是发放
+      float stim = exp(-d * d * 60.0) * exp(-age * 4.0) * fade;
+      if (dend > 0.5) wg = max(wg, stim * 0.7);
+      else wv = max(wv, stim);
     } else {
       float fr = d - Q.x;
       float w = 0.09 + 0.035 * Q.x;
@@ -170,6 +188,7 @@ void main() {
     }
   }
   wv = min(wv, 1.6) * (uMotion * 0.5 + 0.5);
+  wg = min(wg, 1.0) * (uMotion * 0.5 + 0.5);
 
   // 钙成像式的自发闪烁：约 6% 的粒子缓慢地亮起再衰减，放电越频繁越明显
   float caP = 4.0 + aRand.x * 5.0;
@@ -213,12 +232,13 @@ void main() {
   float vz = 1.0 - 0.25 * uTextDim * max(inT, inC);
   spark *= vz;
   wv *= vz;
+  wg *= vz;
   gl_Position = projectionMatrix * mv;
 
   float depth = max(0.5, -mv.z);
   float pulse = 1.0 + uBeat * 0.28 * aRand.y + uFlash * 0.5;
   // 尺寸增益封顶（×3），避免高荧光 + 密集放电时的填充率爆炸
-  float boost = min(spark * 1.8 + wv * 1.5 + dep * 0.25 + trailB * 0.25 + ca * 0.5 + cone * 1.2, 2.0);
+  float boost = min(spark * 1.8 + wv * 1.5 + wg * 1.1 + dep * 0.25 + trailB * 0.25 + ca * 0.5 + cone * 1.2, 2.0);
   gl_PointSize = uSize * sizeMul * (0.65 + aRand.y * 0.7) * uPR * (11.0 / depth) * (1.0 + boost) * pulse * (0.78 + 0.22 * uGlow) * born;
   gl_PointSize = min(gl_PointSize, 40.0 * uPR);
 
@@ -230,7 +250,7 @@ void main() {
   vec3 apCol = mix(uDepolCol, mix(uDepolCol, uSparkWarm, uAccent), smoothstep(0.55, 1.0, wv));
   vColor = col * bright + sparkCol * spark * hot
          + apCol * wv * hot * 0.9
-         + uDepolCol * (dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + trailB * 0.35 + cone * 0.9);
+         + uDepolCol * (wg * hot * 0.8 + dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + trailB * 0.35 + cone * 0.9);
   vAlpha = (0.55 + 0.45 * aRand.z) * (0.2 + 0.8 * ie) * born;
   vSoft = uGlow;
 }
@@ -454,11 +474,12 @@ export class ParticleField {
   // 发射一个动作电位 / 去极化波（本地坐标）。seedPath < 0 表示纯径向波；gate = false 表示不限空间范围
   // 波前位置与空间门半径每帧在 CPU 上按“当前速度”积分，所以点击加快时，已经在途的电流也会立刻加速；
   // 波前到达所在路径带的上限（ceil）就退场，不会窜到别的结构或星尘上
-  emitWave(origin, { strength = 1, seedPath = -1, gate = true, vMul = 1, decay = 0.45, life = 7, ceil = Infinity, gateR0 = 0 } = {}) {
+  // fastUntil：波前在该路径值之前按 fastMul 倍速推进（树突上的电紧张性扩布几乎是瞬时的）
+  emitWave(origin, { strength = 1, seedPath = -1, gate = true, vMul = 1, decay = 0.45, life = 7, ceil = Infinity, gateR0 = 0, fastUntil = -1, fastMul = 1 } = {}) {
     let i = this.waves.findIndex((w) => !w.alive);
     if (i < 0) i = this.waves.reduce((o, w, k) => (w.t0 < this.waves[o].t0 ? k : o), 0);
     const w = this.waves[i];
-    Object.assign(w, { alive: true, t0: this.uniforms.uTime.value, front: seedPath, gateR: gate ? gateR0 : 99, gate, strength, seedPath, vMul, decay, life, ceil, amp: strength });
+    Object.assign(w, { alive: true, t0: this.uniforms.uTime.value, front: seedPath, gateR: gate ? gateR0 : 99, gate, strength, seedPath, vMul, decay, life, ceil, amp: strength, fastUntil, fastMul });
     this.uniforms.uWaves.value[i].set(origin[0], origin[1], origin[2], w.t0);
     this._syncWave(i);
   }
@@ -482,8 +503,9 @@ export class ParticleField {
         this._syncWave(i);
         continue;
       }
-      if (w.seedPath >= 0) w.front += vPath * w.vMul * dt;
-      if (w.gate) w.gateR += gateK * vPath * w.vMul * dt;
+      const v = vPath * w.vMul * (w.front < w.fastUntil ? w.fastMul : 1);
+      if (w.seedPath >= 0) w.front += v * dt;
+      if (w.gate) w.gateR += gateK * v * dt;
       this._syncWave(i);
     }
   }
@@ -567,6 +589,7 @@ export class ParticleField {
     let bdN = bd * 2.9; // 神经突的搜索半径放宽到 1.7 倍：点在神经元旁边的空隙里，也由最近的神经突发放
     let found = false;
     let foundN = false;
+    let idxN = -1;
     for (let k = 0; k < this.anchors.length; k++) {
       this._localInto(this.anchors[k], lp);
       const z = lp[2];
@@ -578,6 +601,7 @@ export class ParticleField {
           bdN = d;
           bestN.set(lp);
           foundN = true;
+          idxN = this.anchors[k];
         }
       } else if (d < bd) {
         bd = d;
@@ -585,7 +609,13 @@ export class ParticleField {
         found = true;
       }
     }
-    if (foundN) return { p: [bestN[0], bestN[1], bestN[2]], path: bestN[3], shape };
+    if (foundN) {
+      // 点中的是树突还是轴突、属于哪个神经元（只有首页记录了归属）
+      const dend = this.colData[(shape * this.count + idxN) * 4 + 3] >= 19.5;
+      const own = meta && meta.owner ? meta.owner[idxN] : 255;
+      const sm = own < 255 && meta.somata ? meta.somata[own] : null;
+      return { p: [bestN[0], bestN[1], bestN[2]], path: bestN[3], shape, dend, somaPath: sm ? sm.path : -1 };
+    }
     if (found) return { p: [best[0], best[1], best[2]], path: -1, shape };
     // 附近没有粒子：射线与本地 z=0 平面求交
     const inv = (this._inv || (this._inv = new THREE.Matrix4())).copy(this.group.matrixWorld).invert();

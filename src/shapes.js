@@ -30,6 +30,8 @@ export const PAL = {
 };
 
 const ACCENT = 10;
+// 树突标记：颜色纹理 a 通道 = 尺寸 + 10×点缀 + 20×树突。点击波在树突上显示为蓝色分级电位，到胞体/轴突才是琥珀色动作电位
+const DEND = 20;
 const TAU = Math.PI * 2;
 
 // ---------- 向量小工具 ----------
@@ -241,6 +243,8 @@ class Builder {
   constructor(n, seed) {
     this.n = n;
     this.i = 0;
+    this.owner = null; // 可选：每个粒子属于哪个胞体（meta.somata 的下标，255 = 不属于）
+    this.curOwner = 255;
     this.pos = new Float32Array(n * 4);
     this.col = new Float32Array(n * 4);
     this.R = mulberry32(seed);
@@ -248,8 +252,9 @@ class Builder {
     this.off = [0, 0, 0];
     this.s = 1;
   }
-  add(x, y, z, path, c, size = 1, accent = false) {
+  add(x, y, z, path, c, size = 1, accent = false, dend = false) {
     if (this.i >= this.n) return;
+    if (this.owner) this.owner[this.i] = this.curOwner;
     const k = this.i++ * 4;
     this.pos[k] = x * this.s + this.off[0];
     this.pos[k + 1] = y * this.s + this.off[1];
@@ -258,10 +263,10 @@ class Builder {
     this.col[k] = c[0];
     this.col[k + 1] = c[1];
     this.col[k + 2] = c[2];
-    this.col[k + 3] = size + (accent ? ACCENT : 0);
+    this.col[k + 3] = size + (accent ? ACCENT : 0) + (dend ? DEND : 0);
   }
-  addP(p, path, c, size, accent) {
-    this.add(p[0], p[1], p[2], path, c, size, accent);
+  addP(p, path, c, size, accent, dend) {
+    this.add(p[0], p[1], p[2], path, c, size, accent, dend);
   }
   reset() {
     this.off = [0, 0, 0];
@@ -520,7 +525,7 @@ function shapeHero(b, opts = {}) {
         acc = R() < 0.04;
         c = acc ? PAL.lav : sg.kind === 'apical' ? (R() < 0.5 ? PAL.c30 : PAL.c40) : blue(R);
       }
-      b.addP(p, path, c, dim ? 0.65 : sg.kind === 'collateral' ? 0.95 : isAxon ? 0.8 : 0.88, acc);
+      b.addP(p, path, c, dim ? 0.65 : sg.kind === 'collateral' ? 0.95 : isAxon ? 0.8 : 0.88, acc, !isAxon);
     }
   };
 
@@ -549,7 +554,14 @@ function shapeHero(b, opts = {}) {
   const wCells = ids.map((id) => defs[id].w);
   const wRest = portrait ? [0.07, 0.025, 0.045, 0.11] : [0.07, 0.025, 0.045, 0.11];
   const counts = alloc(b.n, [...wCells, ...wRest]);
-  ids.forEach((id, i) => sampleNeuron(cells[id], counts[i], B[id], false));
+  // 记录每个粒子属于哪个神经元：点击树突时据此找到它的胞体（分级电位在胞体处“再生”为动作电位）
+  const order = ['C', 'L', 'R', 'U1', 'U2', 'U3', 'U4', 'D1', 'D2'].filter((id) => cells[id]);
+  b.owner = new Uint8Array(b.n).fill(255);
+  ids.forEach((id, i) => {
+    b.curOwner = order.indexOf(id) < 0 ? 255 : order.indexOf(id);
+    sampleNeuron(cells[id], counts[i], B[id], false);
+  });
+  b.curOwner = 255;
   const [cForest, cBasket, cNeuropil, cDust] = counts.slice(ids.length);
   const fc = alloc(cForest, forest.map(() => 1));
   forest.forEach((n, i) => sampleNeuron(n, fc[i], 300 + 9 * i, true));
@@ -585,7 +597,6 @@ function shapeHero(b, opts = {}) {
   }
   addDust(b, cDust, clear);
 
-  const order = ['C', 'L', 'R', 'U1', 'U2', 'U3', 'U4', 'D1', 'D2'].filter((id) => cells[id]);
   const src = portrait ? cells.U1 : cells.U3;
   b.meta = {
     somata: order.map((id) => ({ id, p: cells[id].S.slice(), k: cells[id].k, path: B[id] + cells[id].dMax / SP })),
@@ -860,7 +871,7 @@ function shapeNeuron(b) {
     const c = s.poly.at(u);
     const p = add(c, mul(randPerp(s.poly.tangent(u), R), r));
     const acc = R() < 0.05;
-    b.addP(p, (D0 - (s.dist0 + u * s.poly.len)) / 0.75, acc ? PAL.orchid : blue(R), 0.85, acc);
+    b.addP(p, (D0 - (s.dist0 + u * s.poly.len)) / 0.75, acc ? PAL.orchid : blue(R), 0.85, acc, true);
   }
 
   // 轴突 + 髓鞘（郎飞结间隙）+ 终末
@@ -1849,7 +1860,12 @@ export function generateShape(index, n, opts = {}) {
       pos[d + k] = b.pos[s + k];
       col[d + k] = b.col[s + k];
     }
-    if (col[d + 3] >= ACCENT) accentCount++;
+    if (col[d + 3] % DEND >= ACCENT) accentCount++;
+  }
+  if (b.owner) {
+    const owner = new Uint8Array(n);
+    for (let i = 0; i < n; i++) owner[i] = b.owner[order[i]];
+    meta.owner = owner;
   }
   return { pos, col, accentRatio: accentCount / n, meta };
 }
