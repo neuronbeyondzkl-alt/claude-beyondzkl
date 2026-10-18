@@ -36,6 +36,7 @@ uniform float uPhase;
 uniform float uSparkGain;
 uniform vec4 uWaves[8];
 uniform vec4 uWaveQ[8];
+uniform vec4 uWaveR[8];
 uniform float uHoverV;
 uniform vec3 uDepolCol;
 uniform float uCaGain;
@@ -145,21 +146,24 @@ void main() {
   // 树突上的光点是分级电位（只用蓝色），琥珀色只出现在胞体与轴突上
   vec3 sparkCol = mix(uSparkCool, uSparkWarm, step(0.5 - 0.12 * uDrive, aRand.w) * uAccent * (1.0 - dend));
 
-  // 点击诱发的信号（每个槽位：W = 起点 xyz + 起始时间；Q = 空间门半径, 强度, 起始路径值, 当前波前路径值）
+  // 点击诱发的信号（每个槽位：W = 起点 xyz + 起始时间；Q = 空间门半径, 动作电位幅度, 起始路径值, 当前波前路径值；
+  //   R = 被点中神经元的胞体路径值（-1 = 无）, 分级电位幅度）
   // 有路径的神经突：波前沿路径参数“顺向”传播，只在随时间扩张的空间门内点亮。
   //   树突上是递减的分级电位（wg，低饱和蓝）；到胞体 / 轴突起始段才“再生”为全或无的动作电位（wv，琥珀色峰），
   //   沿轴突以全幅传到突触，下一个神经元的树突上又是分级电位，到它的胞体再次发放。
   // 无路径的粒子（膜、星尘）：只感受到一圈径向的去极化环。动作电位之后是短暂变暗的不应期。
-  float wv = 0.0;
-  float wg = 0.0;
+  float wv = 0.0;  // 动作电位亮度（胞体 / 轴突）
+  float wvS = 0.0; // 动作电位波形（与强度无关）：决定琥珀色，全或无
+  float wg = 0.0;  // 分级电位（树突，低饱和蓝）
   float refr = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 W = uWaves[i];
     if (W.w < -1e5) continue;
     float age = uTime - W.w;
-    if (age < 0.0 || age > 7.0) continue;
+    if (age < 0.0 || age > 12.0) continue;
     vec4 Q = uWaveQ[i];
-    float fade = Q.y; // 振幅在 CPU 上按各自的衰减率计算
+    vec4 Rw = uWaveR[i];
+    float fade = Q.y; // 幅度在 CPU 上计算：再生性的动作电位不随时间递减，只在寿命末尾淡出
     if (fade <= 0.0) continue;
     float d = distance(pm, W.xyz);
     if (Q.z >= 0.0) {
@@ -168,23 +172,34 @@ void main() {
         float fp = path - Q.w;
         float head = exp(-fp * fp * uWaveSharp);
         float tail = fp < 0.0 ? exp(fp * 3.0) * 0.3 : 0.0;
+        float shape = (head + tail) * gate;
         if (dend > 0.5) {
-          // 电紧张性扩布：离刺激点越远越弱
-          wg = max(wg, (head + tail) * gate * fade * 0.62 * exp(-max(0.0, path - Q.z) * 0.12));
+          // 被点中的神经元内：电紧张性扩布，离刺激点越远越弱；下游神经元：由突触输入重新开始
+          float g = (Rw.x >= 0.0 && path <= Rw.x) ? Rw.y * exp(-max(0.0, path - Q.z) * 0.12) : fade * 0.8;
+          wg = max(wg, shape * g * 0.62);
         } else {
-          wv = max(wv, (head + tail) * gate * fade);
+          wv = max(wv, shape * fade);
+          wvS = max(wvS, shape);
           refr = max(refr, (fp < -0.3 ? exp((fp + 0.3) * 1.2) : 0.0) * gate * fade * 0.8);
         }
       }
       // 刺激电极处的瞬间去极化：落在树突上是分级的，落在胞体上就是发放
-      float stim = exp(-d * d * 60.0) * exp(-age * 4.0) * fade;
-      if (dend > 0.5) wg = max(wg, stim * 0.7);
-      else wv = max(wv, stim);
+      float stimS = exp(-d * d * 60.0) * exp(-age * 4.0);
+      if (dend > 0.5) wg = max(wg, stimS * Rw.y * 0.7);
+      else {
+        wv = max(wv, stimS * Rw.y);
+        wvS = max(wvS, stimS);
+      }
     } else {
       float fr = d - Q.x;
       float w = 0.09 + 0.035 * Q.x;
-      wv = max(wv, exp(-(fr * fr) / (w * w)) * fade);
-      refr = max(refr, fade * (1.0 - smoothstep(-0.25, 0.0, fr)) * exp(fr * 0.8));
+      float ring = exp(-(fr * fr) / (w * w));
+      if (dend > 0.5) wg = max(wg, ring * fade * 0.7);
+      else {
+        wv = max(wv, ring * fade);
+        wvS = max(wvS, ring);
+        refr = max(refr, fade * (1.0 - smoothstep(-0.25, 0.0, fr)) * exp(fr * 0.8));
+      }
     }
   }
   wv = min(wv, 1.6) * (uMotion * 0.5 + 0.5);
@@ -247,7 +262,7 @@ void main() {
   col = mix(col, uDepolCol, 0.3 * trailB);
   float hot = 0.7 + 1.1 * uGlow;
   // 峰电位顶端才是琥珀色（全或无），阈下的分级电位始终保持低饱和蓝
-  vec3 apCol = mix(uDepolCol, mix(uDepolCol, uSparkWarm, uAccent), smoothstep(0.55, 1.0, wv));
+  vec3 apCol = mix(uDepolCol, mix(uDepolCol, uSparkWarm, uAccent), smoothstep(0.55, 1.0, wvS));
   vColor = col * bright + sparkCol * spark * hot
          + apCol * wv * hot * 0.9
          + uDepolCol * (wg * hot * 0.8 + dep * (0.8 + 0.5 * uGlow) + ca * 0.9 + trailB * 0.35 + cone * 0.9);
@@ -369,6 +384,7 @@ export class ParticleField {
       uSparkGain: { value: 1 },
       uWaves: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, -1e6)) },
       uWaveQ: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, -1, 0)) },
+      uWaveR: { value: Array.from({ length: 8 }, () => new THREE.Vector4(-1, 0, 0, 0)) },
       uHoverV: { value: 0 },
       uDepolCol: { value: new THREE.Vector3(...PAL.c30) },
       uCaGain: { value: 0.7 },
@@ -475,11 +491,14 @@ export class ParticleField {
   // 波前位置与空间门半径每帧在 CPU 上按“当前速度”积分，所以点击加快时，已经在途的电流也会立刻加速；
   // 波前到达所在路径带的上限（ceil）就退场，不会窜到别的结构或星尘上
   // fastUntil：波前在该路径值之前按 fastMul 倍速推进（树突上的电紧张性扩布几乎是瞬时的）
-  emitWave(origin, { strength = 1, seedPath = -1, gate = true, vMul = 1, decay = 0.45, life = 7, ceil = Infinity, gateR0 = 0, fastUntil = -1, fastMul = 1 } = {}) {
+  // regen：再生性动作电位（全或无、不递减），幅度不随时间衰减，只在寿命末尾淡出；分级部分仍按 decay 衰减
+  emitWave(origin, { strength = 1, seedPath = -1, gate = true, vMul = 1, decay = 0.45, life = 7, ceil = Infinity, gateR0 = 0, fastUntil = -1, fastMul = 1, regen = false } = {}) {
     let i = this.waves.findIndex((w) => !w.alive);
-    if (i < 0) i = this.waves.reduce((o, w, k) => (w.t0 < this.waves[o].t0 ? k : o), 0);
+    // 槽位用满时替换当前最弱的那个
+    if (i < 0) i = this.waves.reduce((o, w, k) => (w.amp < this.waves[o].amp ? k : o), 0);
+    life = Math.min(life, 11); // 着色器里的寿命上限是 12 秒
     const w = this.waves[i];
-    Object.assign(w, { alive: true, t0: this.uniforms.uTime.value, front: seedPath, gateR: gate ? gateR0 : 99, gate, strength, seedPath, vMul, decay, life, ceil, amp: strength, fastUntil, fastMul });
+    Object.assign(w, { alive: true, t0: this.uniforms.uTime.value, front: seedPath, gateR: gate ? gateR0 : 99, gate, strength, seedPath, vMul, decay, life, ceil, amp: strength, gAmp: strength, fastUntil, fastMul, regen });
     this.uniforms.uWaves.value[i].set(origin[0], origin[1], origin[2], w.t0);
     this._syncWave(i);
   }
@@ -487,6 +506,7 @@ export class ParticleField {
   _syncWave(i) {
     const w = this.waves[i];
     this.uniforms.uWaveQ.value[i].set(w.gateR, w.alive ? w.amp : 0, w.seedPath, w.front);
+    this.uniforms.uWaveR.value[i].set(w.alive ? w.fastUntil : -1, w.alive ? w.gAmp : 0, 0, 0);
   }
 
   // vPath：路径单位/秒；gateK：空间门扩张速度与路径速度之比
@@ -496,7 +516,12 @@ export class ParticleField {
       const w = this.waves[i];
       if (!w.alive) continue;
       const age = now - w.t0;
-      w.amp = w.strength * Math.exp(-age * w.decay);
+      // 寿命最后 0.8 秒平滑淡出，不会在一帧内突然消失
+      const e = Math.min(1, Math.max(0, (w.life - age) / 0.8));
+      const env = e * e * (3 - 2 * e);
+      const timeDecay = Math.exp(-age * w.decay);
+      w.amp = w.strength * (w.regen ? 1 : timeDecay) * env;
+      w.gAmp = w.strength * timeDecay * env;
       if (age > w.life || w.amp < 0.02 || (w.seedPath >= 0 && w.front > w.ceil)) {
         w.alive = false;
         this.uniforms.uWaves.value[i].w = -1e6;
@@ -545,6 +570,7 @@ export class ParticleField {
     out[1] = d[a + 1] + (d[b + 1] - d[a + 1]) * m;
     out[2] = d[a + 2] + (d[b + 2] - d[a + 2]) * m;
     out[3] = m < 0.5 ? d[a + 3] : d[b + 3];
+    if (out.length > 4) out[4] = m < 0.5 ? U.uFrom.value : U.uTo.value; // 路径（及树突标记、归属）取自哪个形态
     return out;
   }
 
@@ -582,9 +608,9 @@ export class ParticleField {
       }
       if (pick) return { p: pick.p.slice(), path: pick.path, shape };
     }
-    const lp = this._lp || (this._lp = new Float32Array(4));
-    const best = this._best || (this._best = new Float32Array(4));
-    const bestN = this._bestN || (this._bestN = new Float32Array(4));
+    const lp = this._lp || (this._lp = new Float32Array(5));
+    const best = this._best || (this._best = new Float32Array(5));
+    const bestN = this._bestN || (this._bestN = new Float32Array(5));
     let bd = maxNdc * maxNdc;
     let bdN = bd * 2.9; // 神经突的搜索半径放宽到 1.7 倍：点在神经元旁边的空隙里，也由最近的神经突发放
     let found = false;
@@ -610,11 +636,14 @@ export class ParticleField {
       }
     }
     if (foundN) {
-      // 点中的是树突还是轴突、属于哪个神经元（只有首页记录了归属）
-      const dend = this.colData[(shape * this.count + idxN) * 4 + 3] >= 19.5;
-      const own = meta && meta.owner ? meta.owner[idxN] : 255;
-      const sm = own < 255 && meta.somata ? meta.somata[own] : null;
-      return { p: [bestN[0], bestN[1], bestN[2]], path: bestN[3], shape, dend, somaPath: sm ? sm.path : -1 };
+      // 点中的是树突还是轴突、属于哪个神经元（只有首页记录了归属）。形变途中各粒子的路径可能来自前后两个形态，
+      // 所以标记与归属要从同一个形态里读
+      const side = bestN[4];
+      const ms = this.metas && this.metas[side];
+      const dend = this.colData[(side * this.count + idxN) * 4 + 3] >= 19.5;
+      const own = ms && ms.owner ? ms.owner[idxN] : 255;
+      const sm = own < 255 && ms.somata ? ms.somata[own] : null;
+      return { p: [bestN[0], bestN[1], bestN[2]], path: bestN[3], shape: side, dend, somaPath: sm ? sm.path : -1 };
     }
     if (found) return { p: [best[0], best[1], best[2]], path: -1, shape };
     // 附近没有粒子：射线与本地 z=0 平面求交
@@ -629,7 +658,7 @@ export class ParticleField {
 
   // 随机取一个形态主体上的粒子（用于自发放电）
   randomLocal() {
-    const lp = this._lp || (this._lp = new Float32Array(4));
+    const lp = this._lp || (this._lp = new Float32Array(5));
     for (let tries = 0; tries < 20; tries++) {
       this._localInto(this.anchors[Math.floor(Math.random() * this.anchors.length)], lp);
       if (Math.abs(lp[0]) < 5.5 && Math.abs(lp[1]) < 3.8 && lp[2] > -3) return [lp[0], lp[1], lp[2]];

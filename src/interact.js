@@ -149,10 +149,10 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
     const [nx, ny] = [(cx / innerWidth) * 2 - 1, -((cy / innerHeight) * 2 - 1)];
     const hit = field.pickLocal(nx, ny, 0.14);
     if (hit.path >= 0) {
-      // 衰减放慢：动作电位在轴突上是全幅、不递减的，强度只随时间缓慢收尾；树突上的递减由着色器按距离计算
+      // 再生性动作电位：在胞体与轴突上全幅、不递减（只在寿命末尾淡出）；树突上的分级电位随时间（decay）并在着色器里按距离递减
       // 点在树突上：分级电位以 3 倍速电紧张性地扩布到本神经元的胞体，再在那里发放
       const toSoma = hit.dend && hit.somaPath > hit.path ? hit.somaPath : -1;
-      field.emitWave(hit.p, { strength: amp, seedPath: hit.path, gate: true, decay: 0.16, ceil: field.bandTop(hit.shape, hit.path), fastUntil: toSoma, fastMul: 3 });
+      field.emitWave(hit.p, { strength: amp, seedPath: hit.path, gate: true, decay: 0.16, ceil: field.bandTop(hit.shape, hit.path), fastUntil: toSoma, fastMul: 3, regen: true });
     } else {
       field.emitWave(hit.p, { strength: amp, seedPath: -1, gate: true });
     }
