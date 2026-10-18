@@ -521,7 +521,7 @@ main { position: relative; z-index: 2; }
 /* ---------- 提示条 ---------- */
 .toast {
   position: fixed;
-  left: 50%;
+  right: clamp(16px, 3vw, 36px);
   bottom: calc(26px + env(safe-area-inset-bottom, 0px));
   z-index: 13;
   width: max-content;
@@ -536,11 +536,11 @@ main { position: relative; z-index: 2; }
   font-size: 13.5px;
   line-height: 1.75;
   opacity: 0;
-  transform: translate(-50%, 16px);
+  transform: translateY(16px);
   transition: opacity 0.5s, transform 0.5s;
   pointer-events: none;
 }
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.show { opacity: 1; transform: none; }
 
 /* ---------- 自定义光标：潜水灯光环 ---------- */
 .cursor-ring, .cursor-dot {
@@ -576,13 +576,14 @@ body.has-cursor :is(button, a, input, label, output, .tune, .hud-top, .tune *) {
 body.has-cursor :is(button, a, input[type="range"]) { cursor: pointer; }
 
 /* ---------- 窄屏 ---------- */
-@media (max-width: 760px) {
+/* 与 main.js 的 layoutMode 一致：窄屏或竖屏（含竖放的平板）都用“生物在上、文案在下”的布局 */
+@media (max-width: 760px), (max-aspect-ratio: 9/10) {
   .hud-top { align-items: flex-start; }
   .brand__en { display: none; }
   .pill { height: 34px; padding: 0 12px; font-size: 12px; letter-spacing: 0.08em; }
   .tune { top: calc(56px + env(safe-area-inset-top, 0px)); right: 16px; }
   .bignum { display: none; }
-  .toast { top: calc(60px + env(safe-area-inset-top, 0px)); bottom: auto; transform: translate(-50%, -12px); }
+  .toast { top: calc(60px + env(safe-area-inset-top, 0px)); bottom: auto; right: 16px; transform: translateY(-12px); }
   .gauge { top: calc(64px + env(safe-area-inset-top, 0px)); right: 16px; transform: none; }
   .gauge__track, .gauge__label { display: none; }
   .gauge__num { font-size: 20px; }

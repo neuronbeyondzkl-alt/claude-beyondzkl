@@ -30,7 +30,7 @@ export function initTunePanel({ glow, titleGlow, volume, onGlow, onTitleGlow, on
     input.addEventListener('input', () => { paint(); cb(input.value / 100); });
   });
 
-  const narrow = matchMedia('(max-width: 760px)').matches;
+  const narrow = matchMedia('(max-width: 760px), (max-aspect-ratio: 9/10)').matches;
   const setOpen = (open, remember = true) => {
     panel.hidden = !open;
     btn.setAttribute('aria-expanded', String(open));
