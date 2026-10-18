@@ -69,11 +69,14 @@ body {
 button, input, output { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--c40); outline-offset: 3px; border-radius: 4px; }
 
+/* 画布按“大视口”高度铺满：手机地址栏收起 / 展开时尺寸不变，避免反复重建渲染目标 */
 #gl {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100lvh;
   display: block;
   z-index: 0;
 }
@@ -109,7 +112,7 @@ h2.neon { font-size: clamp(50px, 7.2vw, 128px); }
   animation: tube 1.1s linear backwards;
   animation-delay: calc(var(--r) * 1s + 0.12s);
 }
-.neon .ch.blink { animation: blink 0.7s linear; }
+.sec.is-in .neon .ch.blink, .zone-banner.show .neon .ch.blink { animation: blink 0.7s linear; }
 @keyframes tube {
   0% { opacity: 0.16; }
   10% { opacity: 0.9; }

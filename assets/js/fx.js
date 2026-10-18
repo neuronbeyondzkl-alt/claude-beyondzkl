@@ -16,9 +16,10 @@ const hexLin = (h) => {
     return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   });
 };
-// 夜光藻 / 浮游生物的冷色荧光，全部低饱和
-const BIO = ['#a9e3da', '#CCDBEB', '#9FBDDA', '#c9bde6', '#dff1ec'].map(hexLin);
-const BUBBLE = ['#CCDBEB', '#E8EEF6', '#b9d3e6'].map(hexLin);
+// 夜光藻 / 浮游生物的冷色荧光，全部低饱和；蓝色一律取 Loyel 色板，另配淡薄荷绿与淡紫
+const BIO = ['#a9e3da', '#CCDBEB', '#9FBDDA', '#c9bde6', '#E8EEF6'].map(hexLin);
+const BUBBLE = ['#CCDBEB', '#E8EEF6', '#9FBDDA'].map(hexLin);
+const MAX_WAKE_SPEED = 4;   // 尾迹速度上限（按宽高比校正的 NDC/秒），快速甩动不会把生物拖成一道白线
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -26,6 +27,7 @@ export class InteractionFX {
   constructor({ scene, tanHalf, pixelRatio, glow, motion = 1 }) {
     this.tanHalf = tanHalf;
     this.aspect = 1;
+    this.rect = { left: 0, top: 0, width: innerWidth, height: innerHeight };
     this.motion = motion;
     this.time = 0;
 
@@ -64,11 +66,18 @@ export class InteractionFX {
     this.dirty = false;
   }
 
-  setAspect(a) { this.aspect = a; }
+  // 画布在页面上的实际矩形（画布按 100lvh 铺满，可能比可视区域高）与宽高比
+  setViewport(rect, aspect) {
+    this.rect = { left: rect.left, top: rect.top, width: rect.width || innerWidth, height: rect.height || innerHeight };
+    this.aspect = aspect;
+  }
   setGlow(g) { this.mat.uniforms.uGlow.value = g; }
 
-  // 屏幕坐标 → NDC
-  ndc(cx, cy) { return [(cx / innerWidth) * 2 - 1, -((cy / innerHeight) * 2 - 1)]; }
+  // 屏幕坐标 → 画布 NDC
+  ndc(cx, cy) {
+    const r = this.rect;
+    return [((cx - r.left) / r.width) * 2 - 1, -(((cy - r.top) / r.height) * 2 - 1)];
+  }
   // NDC → 指定深度平面上的世界坐标
   world(nx, ny, z) {
     const d = CAM_Z - z;
@@ -115,7 +124,8 @@ export class InteractionFX {
       const moved = Math.hypot((x - L.x) * this.aspect, y - L.y);
       if (moved > 0.03 || stamp - L.s > 0.06) {
         const s = this.trail[this.trailHead];
-        Object.assign(s, { x, y, t: time, speed: Math.min(speed, 6), vx: this.vel.x, vy: this.vel.y });
+        const k = speed > MAX_WAKE_SPEED ? MAX_WAKE_SPEED / speed : 1;
+        Object.assign(s, { x, y, t: time, speed: Math.min(speed, 6), vx: this.vel.x * k, vy: this.vel.y * k });
         this.trailHead = (this.trailHead + 1) % TRAIL;
         this.sparkAcc += Math.min(speed, 5) * 3.2 * Math.min(stamp - L.s, 0.1);
         while (this.sparkAcc >= 1) { this.sparkAcc -= 1; this.sparksAt(x, y, 1, 0.12, [1.0, 2.0]); }

@@ -131,18 +131,23 @@ sections[0].classList.add('is-in');
 // ---------------------------------------------------------------------------
 const gl = { ready: false };
 const canvas = $('#gl');
+// 画布按“大视口”高度（100lvh）铺满：手机地址栏收起/展开时画布尺寸不变，不必重建渲染目标
+const view = { w: innerWidth, h: innerHeight };
+const pickDpr = () => Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 1.75);
 
 function initGL(data) {
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
   if (!renderer.capabilities.isWebGL2) throw new Error('WebGL2 unavailable');
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = NoToneMapping;
-  const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 1.75);
+  const dpr = pickDpr();
+  view.w = canvas.clientWidth || innerWidth;
+  view.h = canvas.clientHeight || innerHeight;
   renderer.setPixelRatio(dpr);
-  renderer.setSize(innerWidth, innerHeight, false);
+  renderer.setSize(view.w, view.h, false);
 
   const scene = new Scene();
-  const camera = new PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
+  const camera = new PerspectiveCamera(35, view.w / view.h, 0.1, 100);
   camera.position.set(0, 0, 12);
 
   const S = SHAPES.length;
@@ -175,7 +180,7 @@ function initGL(data) {
       uGlow: { value: glow }, uSatMax: { value: 0.42 },
       uAlphaA: { value: 1 }, uAlphaB: { value: 1 },
       uScatter: { value: reduceMotion ? 0.35 : 1 },
-      uAspect: { value: innerWidth / innerHeight },
+      uAspect: { value: view.w / view.h },
       uMotion: { value: reduceMotion ? 0.35 : 1 },
       uIntro: { value: reduceMotion ? 1 : 0 },
     },
@@ -233,7 +238,7 @@ function initGL(data) {
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new Vector2(innerWidth / 2, innerHeight / 2), 1, 0.6, 0.0);
+  const bloom = new UnrealBloomPass(new Vector2(view.w / 2, view.h / 2), 1, 0.6, 0.0);
   composer.addPass(bloom);
   // 背景渐变在辉光之后叠加（粒子本就是加色混合，先后顺序等价）
   const bgPass = new ShaderPass({
@@ -243,7 +248,7 @@ function initGL(data) {
       uTop: { value: new Vector3(...BG[0].top) }, uBot: { value: new Vector3(...BG[0].bot) },
       uRayCol: { value: new Vector3(...hexLin('#CCDBEB')) }, uRingCol: { value: new Vector3(...hexLin('#9FBDDA')) },
       uRays: { value: 0 }, uCaus: { value: 0 }, uSurf: { value: -1 },
-      uTime: { value: 0 }, uRes: { value: new Vector2(innerWidth, innerHeight) },
+      uTime: { value: 0 }, uRes: { value: new Vector2(view.w, view.h) },
       uClick: { value: fx.uClick },
     },
   });
@@ -257,9 +262,14 @@ function initGL(data) {
   const countComp = N / count;
   Object.assign(gl, { renderer, scene, camera, composer, bloom, pMat, bgMat, snowMat, streakMat, fx, dpr, countComp, bornAt: performance.now(), ready: true });
   setGlow(glow);
-  resize();
+  resize(true);
+  // 刷新时若已停在页面中段，不要再触发“穿越海面”
+  surfArmed = scrollY < innerHeight * 0.4;
+  if (!surfArmed) autoCollapseTune();
 
+  // 上下文丢失后 three.js 会在恢复时自行重建 GPU 资源（DataTexture 保留着数组）；这里只需暂停 / 恢复渲染
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); gl.ready = false; });
+  canvas.addEventListener('webglcontextrestored', () => { gl.ready = true; resize(true); });
 }
 
 // ---------------------------------------------------------------------------
@@ -268,9 +278,11 @@ function initGL(data) {
 let centers = [];
 let layoutMode = 'wide';
 let slots = [];   // 每个章节里，文案卡片旁边留给生物的空白区域（像素）
+let mids = [];    // 每个章节中线的绝对位置（像素），供视差使用，避免每帧读 offsetTop
 function measure() {
   const vh = innerHeight, vw = innerWidth;
-  centers = sections.map((s) => s.offsetTop + s.offsetHeight / 2 - vh / 2);
+  mids = sections.map((s) => s.offsetTop + s.offsetHeight / 2);
+  centers = mids.map((m) => m - vh / 2);
   centers[0] = 0;
   const maxScroll = document.documentElement.scrollHeight - vh;
   centers[centers.length - 1] = Math.min(centers[centers.length - 1], maxScroll);
@@ -284,27 +296,53 @@ function measure() {
       : { center: (r.right + vw - gaugeW) / 2, width: vw - gaugeW - r.right };
   });
 }
-function resize() {
+function resize(force = false) {
   measure();
-  layoutMode = innerWidth / innerHeight < 0.9 ? 'tall' : 'wide';
+  // 与 CSS 断点一致：窄于 760px（含横屏手机）或竖屏时，文案卡片铺满底部，生物放到上半屏
+  layoutMode = innerWidth <= 760 || innerWidth / innerHeight < 0.9 ? 'tall' : 'wide';
   if (!gl.ready) return;
-  const { renderer, camera, composer, pMat, bgMat } = gl;
-  renderer.setSize(innerWidth, innerHeight, false);
-  composer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  pMat.uniforms.uAspect.value = camera.aspect;
-  gl.fx.setAspect(camera.aspect);
+  const { renderer, camera, composer, pMat, bgMat, snowMat, fx } = gl;
+  const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight, dpr = pickDpr();
+  if (force || w !== view.w || h !== view.h || dpr !== gl.dpr) {
+    view.w = w; view.h = h;
+    if (dpr !== gl.dpr) {
+      gl.dpr = dpr;
+      renderer.setPixelRatio(dpr);
+      composer.setPixelRatio(dpr);
+      pMat.uniforms.uPixelRatio.value = dpr;
+      snowMat.uniforms.uPixelRatio.value = dpr;
+      fx.mat.uniforms.uPixelRatio.value = dpr;
+    }
+    renderer.setSize(w, h, false);
+    composer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    pMat.uniforms.uAspect.value = camera.aspect;
+    bgMat.uniforms.uRes.value.set(w, h);
+  }
+  fx.setViewport(canvas.getBoundingClientRect(), camera.aspect);
   // 粒子像素尺寸随视口高度略微缩放；竖屏时生物被缩小，粒子也相应变细
-  pMat.uniforms.uSize.value = layoutMode === 'tall' ? 1.45 : 2.0 * clamp(innerHeight / 900, 0.8, 1.5);
-  bgMat.uniforms.uRes.value.set(innerWidth, innerHeight);
+  pMat.uniforms.uSize.value = layoutMode === 'tall' ? 1.45 : 2.0 * clamp(h / 900, 0.8, 1.5);
 }
-addEventListener('resize', resize);
+// 合并同一帧内的多次 resize；屏幕缩放比例变化（拖到另一块显示器、浏览器缩放）也重新计算
+let resizeQueued = false;
+const queueResize = () => {
+  if (resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => { resizeQueued = false; resize(); });
+};
+addEventListener('resize', queueResize);
+const watchDpr = () => {
+  const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+  mq.addEventListener?.('change', () => { queueResize(); watchDpr(); }, { once: true });
+};
+watchDpr();
+document.fonts?.ready?.then(() => queueResize());
 
 function placement(i) {
   if (i === 0) return { x: 0, y: 0, s: 1 };
   const halfH = 12 * Math.tan((17.5 * Math.PI) / 180);
-  const halfW = halfH * (innerWidth / innerHeight);
+  const halfW = halfH * (view.w / view.h);
   if (i === SCENE.length - 1) return layoutMode === 'tall' ? { x: 0, y: halfH * 0.5, s: clamp(halfW / 2.6, 0.45, 1) } : { x: 0, y: -2.0, s: clamp(halfW / 4.2, 0.65, 1.3) };
   if (layoutMode === 'tall' || !slots[i]) {
     // 竖屏：生物放在上半屏，按宽、高两个方向取较小的缩放
@@ -312,17 +350,17 @@ function placement(i) {
     return { x: 0, y: halfH * 0.38, s: clamp(s, 0.32, 1.1) };
   }
   // 生物居中放进文案旁的空白区域，并按可用宽度缩放
-  const upp = (2 * halfW) / innerWidth;
+  const upp = (2 * halfW) / view.w;
   const sl = slots[i];
   const s = Math.min((sl.width * upp * 1.06) / SCENE[i].span, (2 * halfH * 0.9) / SCENE[i].h);
-  return { x: (sl.center - innerWidth / 2) * upp, y: 0, s: clamp(s, 0.45, 1.3) };
+  return { x: (sl.center - view.w / 2) * upp, y: 0, s: clamp(s, 0.45, 1.3) };
 }
 
 const _m = new Matrix4(), _q = new Quaternion(), _e = new Euler(), _p = new Vector3(), _s = new Vector3();
 // 亮度补偿：同样数量的粒子挤进更小的屏幕面积会过曝，按“缩放 × 每单位像素数”的平方反向补偿
 function densityComp(i) {
   if (i === 0) return gl.countComp;
-  const ppu = innerHeight / (2 * 12 * Math.tan((17.5 * Math.PI) / 180));
+  const ppu = view.h / (2 * 12 * Math.tan((17.5 * Math.PI) / 180));
   const k = (placement(i).s * ppu) / (0.9 * 119);
   return clamp(gl.countComp * k * k, 0.2, 1.6);
 }
@@ -343,7 +381,8 @@ function sceneMatrix(i, off, out, t, mouse) {
 // 主循环
 // ---------------------------------------------------------------------------
 let sCur = scrollY, prevS = scrollY, velS = 0, time = 0, last = performance.now(), lastIdx = -1;
-let lastZone = -1, zoneT = -9, surfT = -99, surfArmed = true, ascending = false, lastExit = -1;
+let lastZone = -1, bannerZone = -1, pendingZone = null, zoneT = -9, surfT = -99, surfArmed = true, ascending = false, lastExit = -1;
+let hudDepth = -1, hudZone = -1, hudFill = '';
 const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
 let lastPointerType = 'mouse';
 const isUi = (el) => !!el.closest?.('button, a, input, label, output, .tune, .hud-top');
@@ -356,19 +395,42 @@ addEventListener('pointermove', (e) => {
 }, { passive: true });
 document.addEventListener('pointerleave', () => gl.ready && gl.fx.onPointerLeave());
 
-// 点击：鼠标用 pointerdown（更跟手），触屏用 click（避免滑动滚动时误触发）
+// 点击：鼠标用 pointerdown（更跟手）；触屏 / 手写笔用“轻点”判定（按下与抬起位置相近、时间很短），
+// 滑动滚动会触发 pointercancel 或位移过大，不会误发。iOS Safari 不会为 window 上的 click 监听合成点击事件，所以不依赖 click。
 function sonar(e) {
   if (!gl.ready || isUi(e.target)) return;
   const s = gl.fx.onClick(e.clientX, e.clientY, time);
   cursor.pulse(s);
   audio.click?.(s, clamp((e.clientX / innerWidth) * 2 - 1, -1, 1));
 }
-addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType; if (e.pointerType === 'mouse' && e.button === 0) sonar(e); });
-addEventListener('click', (e) => { if (lastPointerType !== 'mouse') sonar(e); });
+let tap = null;
+addEventListener('pointerdown', (e) => {
+  lastPointerType = e.pointerType;
+  if (e.pointerType === 'mouse') { if (e.button === 0) sonar(e); }
+  else tap = { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
+}, { passive: true });
+addEventListener('pointerup', (e) => {
+  if (!tap || e.pointerId !== tap.id) return;
+  const ok = Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 12 && e.timeStamp - tap.t < 450;
+  tap = null;
+  if (ok) sonar(e);
+}, { passive: true });
+addEventListener('pointercancel', () => { tap = null; }, { passive: true });
 
-// 返回海面：一路上浮，粒子倒放所有生物，气泡涌起
+// 返回海面：一路上浮，粒子倒放所有生物，气泡涌起。上浮途中用户一滚动 / 触摸 / 按键就把控制权交还
+let ascentRaf = 0, ascentTimer = 0;
+function endAscent() {
+  cancelAnimationFrame(ascentRaf);
+  clearTimeout(ascentTimer);
+  ascentRaf = 0;
+  ascending = false;
+  pendingZone = null;
+  bannerZone = lastZone;      // 上浮途中经过的水层不再补发横幅
+}
 function ascendToSurface() {
+  if (ascentRaf) return;
   if (reduceMotion || scrollY < 10) { scrollTo(0, 0); return; }
+  clearTimeout(ascentTimer);
   ascending = true;
   audio.ascend?.();
   if (gl.ready) gl.fx.ascend(2.4);
@@ -377,11 +439,12 @@ function ascendToSurface() {
     const k = Math.min(1, (now - t0) / dur);
     const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
     scrollTo(0, y0 * (1 - e));
-    if (k < 1) requestAnimationFrame(step);
-    else setTimeout(() => { ascending = false; }, 600);
+    if (k < 1) ascentRaf = requestAnimationFrame(step);
+    else { ascentRaf = 0; ascentTimer = setTimeout(endAscent, 600); }
   };
-  requestAnimationFrame(step);
+  ascentRaf = requestAnimationFrame(step);
 }
+['wheel', 'touchstart', 'keydown'].forEach((ev) => addEventListener(ev, () => { if (ascentRaf) endAscent(); }, { passive: true }));
 
 function sectionFloat(s) {
   if (s <= centers[0]) return 0;
@@ -395,10 +458,12 @@ const NAMES = sections.map((s) => s.dataset.name);
 function updateHud(F) {
   const A = Math.floor(F), B = Math.min(A + 1, SCENE.length - 1), f = F - A;
   const depth = lerp(SCENE[A].depth, SCENE[B].depth, smooth(0.15, 0.85, f));
-  const z = ZONES[zoneOf(depth)];
-  depthVal.textContent = Math.round(depth).toLocaleString('en-US');
-  depthZone.textContent = `${z.name} · ${z.en}`;
-  depthFill.style.transform = `scaleY(${clamp(Math.log10(1 + depth) / Math.log10(4001), 0, 1).toFixed(4)})`;
+  const zi = zoneOf(depth);
+  const dr = Math.round(depth);
+  if (dr !== hudDepth) { hudDepth = dr; depthVal.textContent = dr.toLocaleString('en-US'); }
+  if (zi !== hudZone) { hudZone = zi; depthZone.textContent = `${ZONES[zi].name} · ${ZONES[zi].en}`; }
+  const fill = `scaleY(${clamp(Math.log10(1 + depth) / Math.log10(4001), 0, 1).toFixed(3)})`;
+  if (fill !== hudFill) { hudFill = fill; depthFill.style.transform = fill; }
   const idx = Math.round(F);
   if (idx !== lastIdx) {
     lastIdx = idx;
@@ -409,24 +474,31 @@ function updateHud(F) {
     audio.setScene(idx, SCENE[idx].depth);
   }
   audio.setDepth?.(depth);
-  // 穿越水层：横幅 + 一圈从中心扩散的声呐波 + 音效
-  const zi = zoneOf(depth);
-  if (lastZone === -1) lastZone = zi;
-  else if (zi !== lastZone) {
-    const deeper = zi > lastZone;
+  // 穿越水层：横幅 + 一圈从中心扩散的声呐波 + 音效。
+  // 两次穿越间隔太近时不丢弃，而是排队，等上一条横幅播放一段后显示“最终所在”的水层
+  if (lastZone === -1) { lastZone = bannerZone = zi; return; }
+  if (zi !== lastZone) {
     lastZone = zi;
-    if (!ascending && time - zoneT > 1.2) {
+    pendingZone = ascending ? null : { zi, deeper: zi > bannerZone };
+    if (ascending) bannerZone = zi;
+  }
+  if (pendingZone && time - zoneT > 1.2) {
+    const { zi: z, deeper } = pendingZone;
+    pendingZone = null;
+    if (z !== bannerZone) {
+      bannerZone = z;
       zoneT = time;
-      showZoneBanner(zi, deeper);
+      showZoneBanner(z, deeper);
       if (gl.ready) gl.fx.pulse(0, 0, 2.2, time);
-      audio.zoneCross?.(zi, deeper);
+      audio.zoneCross?.(z, deeper);
     }
   }
 }
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min((now - last) / 1000, 0.05);
+  const dtReal = Math.max((now - last) / 1000, 1e-3);   // 真实间隔（算滚动速度用，掉帧时不会高估）
+  const dt = Math.min(dtReal, 0.05);                     // 动画步长（掉帧时限幅，避免跳变）
   last = now;
   time += dt;
 
@@ -440,7 +512,7 @@ function frame(now) {
   mouse.y += (mouse.ty - mouse.y) * (1 - Math.exp(-dt * 2.5));
 
   // 滚动速度（屏/秒），驱动速度线
-  const vel = (sCur - prevS) / Math.max(dt, 1e-3) / innerHeight;
+  const vel = (sCur - prevS) / dtReal / innerHeight;
   prevS = sCur;
   velS += (vel - velS) * (1 - Math.exp(-dt * 8));
 
@@ -456,13 +528,16 @@ function frame(now) {
   }
   if (sCur < innerHeight * 0.1) surfArmed = true;
 
-  // 背景大号章节数字的视差
+  // 背景大号章节数字的视差（章节位置在 measure() 里缓存，这里不读布局）
   const vh = innerHeight;
-  bignums.forEach((el, i) => {
-    if (!el) return;
-    const p = (sections[i].offsetTop + sections[i].offsetHeight / 2 - sCur - vh / 2) / vh;
-    if (Math.abs(p) < 1.6) el.style.transform = `translate3d(0, ${(p * 22).toFixed(2)}vh, 0)`;
-  });
+  for (let i = 0; i < bignums.length; i++) {
+    const el = bignums[i];
+    if (!el) continue;
+    const p = (mids[i] - sCur - vh / 2) / vh;
+    if (Math.abs(p) > 1.6) continue;
+    const tf = `translate3d(0, ${(p * 22).toFixed(1)}vh, 0)`;
+    if (el._tf !== tf) { el._tf = tf; el.style.transform = tf; }
+  }
 
   const [shx, shy] = gl.fx.update(time, dt);
   gl.camera.position.set(shx, shy, 12);
@@ -477,8 +552,9 @@ function frame(now) {
   sceneMatrix(B, f - 1, u.uMatB.value, time, mouse);
 
   const bf = smooth(0, 1, f), b = gl.bgMat.uniforms;
-  b.uTop.value.set(...BG[A].top.map((v, k) => lerp(v, BG[B].top[k], bf)));
-  b.uBot.value.set(...BG[A].bot.map((v, k) => lerp(v, BG[B].bot[k], bf)));
+  const tA = BG[A].top, tB = BG[B].top, bA = BG[A].bot, bB = BG[B].bot;
+  b.uTop.value.set(lerp(tA[0], tB[0], bf), lerp(tA[1], tB[1], bf), lerp(tA[2], tB[2], bf));
+  b.uBot.value.set(lerp(bA[0], bB[0], bf), lerp(bA[1], bB[1], bf), lerp(bA[2], bB[2], bf));
   b.uRays.value = lerp(SCENE[A].rays, SCENE[B].rays, bf);
   b.uCaus.value = reduceMotion ? 0 : lerp(SCENE[A].caus, SCENE[B].caus, bf);
   b.uSurf.value = time - surfT < 3 ? time - surfT : -1;

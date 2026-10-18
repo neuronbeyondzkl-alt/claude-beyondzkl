@@ -9,7 +9,8 @@
 //         深渊层       同上，但每个和弦 4 小节，节奏更“辽阔”。
 //         两组持久振荡器轮流承担和弦，交叉淡入淡出——换和弦时没有任何滑音。
 //   动机：8 小节旋律 A–D–E–F | E–D | F–D–C–A | C–F–G–A | G–E | G–E–D | E（第三句是第一句上移三度的模进），
-//         由柔和的玻璃/卡林巴音色演奏，经过附点八分音符的乒乓延迟与混响；每隔一轮出现一次。
+//         由柔和的玻璃/卡林巴音色演奏，经过附点八分音符的乒乓延迟与混响；每隔一轮完整出现一次，
+//         浅层的空档轮只留下四个长音作为远处的回声。
 //         透光层第二遍“问答”时第 2、4 句升高八度；弱光层第二遍整体降八度；
 //         无光层只奏首句且降八度；深渊层把首句按两倍时值“增值”演奏。
 //   层次：铺底和弦 + 高空泛音（透光层的微光）+ 次低音（根音、缓慢膨胀）+ 海浪褐噪声 + 海面细碎水声
@@ -137,6 +138,7 @@ export class OceanAudio {
     this._starting = null;
     this.active = { bell: 0, pluck: 0, harp: 0, blip: 0, ping: 0, whale: 0, bub: 0, click: 0, sting: 0, fx: 0 };
     this._clickT = -10; this._clickK = 0; this._whumpT = -10; this._ascendUntil = 0;
+    this._tgt = new Map();    // 各混音参数最近一次的目标值（_glide 用来去重）
   }
 
   get isOn() { return this.on; }
@@ -172,7 +174,11 @@ export class OceanAudio {
     return input;
   }
   // 平滑地把参数推向目标（只用于“混音层”参数，调度器拥有的包络参数不走这里）
-  _glide(param, v, tau) {
+  // eps > 0：与上一次目标值的相对差不超过 eps 时直接跳过（setDepth 每帧调用，避免无意义的自动化事件）
+  _glide(param, v, tau, eps = 0) {
+    const last = this._tgt.get(param);
+    if (eps > 0 && last !== undefined && Math.abs(v - last) <= eps * Math.max(Math.abs(last), 1e-3)) return;
+    this._tgt.set(param, v);
     const t = this.ctx.currentTime;
     param.cancelScheduledValues(t);
     param.setTargetAtTime(v, t, Math.max(0.01, tau));
@@ -194,7 +200,8 @@ export class OceanAudio {
   // -------------------------------------------------------------------------
   _init() {
     let ctx;
-    try { ctx = new AC({ latencyHint: 'playback' }); } catch (e) { ctx = new AC(); }
+    // 'balanced'：比 'playback' 的缓冲小得多，点击音效能跟上画面里的声呐波；又比 'interactive' 更省电、更不易爆音
+    try { ctx = new AC({ latencyHint: 'balanced' }); } catch (e) { ctx = new AC(); }
     this.ctx = ctx;
     const t0 = ctx.currentTime;
     try {
@@ -419,9 +426,15 @@ export class OceanAudio {
   // 公共接口
   // -------------------------------------------------------------------------
   async start() {
-    if (this.on) return;
-    if (this._starting) return this._starting;
+    // 先记下“想要开启”，再判断是否已有一次 start 在进行：
+    // 否则 start() → stop() → start() 落在同一次启动等待期间时，最后的 start 会被吞掉（最终是关的）
     this._wantOn = true;
+    if (this.on) return;
+    if (this._starting) {
+      try { await this._starting; } catch (e) { /* 忽略 */ }
+      if (this._wantOn && !this.on && !this._starting && this.ctx) return this.start();
+      return;
+    }
     this._starting = (async () => {
       if (!AC) return;
       if (!this.ctx) this._init();
@@ -430,15 +443,23 @@ export class OceanAudio {
       if (!this._wantOn) { if (!this.on) this._suspend(); return; }   // 等待期间又被关掉了
       const now = this.ctx.currentTime;
       const fresh = this._needReset;
-      if (fresh) this._resetMusic(now + 0.08);
-      else if (this.nextT < now) this.nextT = now + 0.05;
+      const g = this.master.gain;
+      g.cancelScheduledValues(now);
+      if (fresh) {
+        // 从引子重新开始：master 保持 0，先把上一次残留的和弦包络在 70 ms 内淡到 0，再从 t0 起淡入
+        const t0 = now + 0.1;
+        g.setValueAtTime(0, now);
+        this._resetMusic(now, t0);
+        g.setTargetAtTime(this._volGain(), t0, 0.8);
+      } else {
+        if (this.nextT < now) this.nextT = now + 0.05;
+        g.setValueAtTime(g.value, now);                  // 先锚定当前值（可能正处在 stop 的淡出斜坡上）
+        g.setTargetAtTime(this._volGain(), now, 0.8);
+      }
       this.on = true;
       this._applyScene(fresh ? 0.05 : 1.2);
       this._depthApplied = this._depth; this._depthT = now;
       this._applyDepth(this._depth, fresh ? 0.05 : 0.4);
-      const g = this.master.gain;
-      g.cancelScheduledValues(now); g.setValueAtTime(g.value, now);
-      g.setTargetAtTime(this._volGain(), now, 0.8);
       if (!this._timer) this._timer = setInterval(() => this._tick(), TICK_MS);
       this._tick();
     })();
@@ -520,29 +541,37 @@ export class OceanAudio {
     const L = clamp(Math.log10(1 + d) / Math.log10(4001), 0, 1);
     const uw = 9500 * Math.pow(650 / 9500, Math.pow(L, 1.4));   // 0 m 9.5 kHz → 300 m ≈1.9 kHz → 4000 m 650 Hz
     this._L = L;
-    this._glide(this.uwLP.frequency, uw, tau);
-    this._glide(this.bioLP.frequency, clamp(uw * 2.6, 2200, 14000), tau);
-    this._glide(this.sfxLP.frequency, clamp(uw * 3.5, 3000, 16000), tau);
-    this._glide(this.wavesMix.gain, LV.waves * lerp(1, 0.12, smooth(0.2, 0.85, L)), tau);
-    this._glide(this.wavesLP.frequency, 700 * Math.pow(160 / 700, L), tau);
-    this._glide(this.rumbleMix.gain, LV.rumble * smooth(0.55, 1, L), tau);
-    this._hiss(tau);
+    const e = 0.006;                                   // 相对变化 < 0.6% 的参数不重写
+    this._glide(this.uwLP.frequency, uw, tau, e);
+    this._glide(this.bioLP.frequency, clamp(uw * 2.6, 2200, 14000), tau, e);
+    this._glide(this.sfxLP.frequency, clamp(uw * 3.5, 3000, 16000), tau, e);
+    this._glide(this.wavesMix.gain, LV.waves * lerp(1, 0.12, smooth(0.2, 0.85, L)), tau, e);
+    this._glide(this.wavesLP.frequency, 700 * Math.pow(160 / 700, L), tau, e);
+    this._glide(this.rumbleMix.gain, LV.rumble * smooth(0.55, 1, L), tau, e);
+    this._hiss(tau, e);
   }
 
-  _hiss(tau) {
+  _hiss(tau, eps = 0) {
     const L = this._L || 0;
-    this._glide(this.hissMix.gain, LV.hiss * this.arr.hiss * (1 - smooth(0, 0.45, L)), tau);
+    this._glide(this.hissMix.gain, LV.hiss * this.arr.hiss * (1 - smooth(0, 0.45, L)), tau, eps);
   }
 
   // -------------------------------------------------------------------------
   // 调度器
   // -------------------------------------------------------------------------
-  _resetMusic(t) {
+  // now：当前时刻；t：第一个和弦（引子）开始的时刻。
+  // 旧版在 t 处 setValueAtTime(0)，但紧接着 _setChord(t) 的 cancelScheduledValues(t) 会把它删掉，
+  // 结果上一次停止前的和弦以满电平“挂”在引子下面再慢慢衰减。这里改为：锚定当前值 → 在 t 之前线性淡到 0。
+  _resetMusic(now, t) {
+    const fadeEnd = Math.max(now + 0.02, t - 0.03);
     for (const b of this.banks) {
-      for (const p of [b.padEnv.gain, b.airEnv.gain, b.bassEnv.gain]) { p.cancelScheduledValues(0); p.setValueAtTime(0, t); }
+      for (const p of [b.padEnv.gain, b.airEnv.gain, b.bassEnv.gain]) {
+        p.cancelScheduledValues(now); p.setValueAtTime(p.value, now); p.linearRampToValueAtTime(0, fadeEnd);
+      }
     }
-    this.heartEnv.gain.cancelScheduledValues(0); this.heartEnv.gain.setValueAtTime(0, t);
-    this.heartOsc.frequency.cancelScheduledValues(0);
+    const he = this.heartEnv.gain;
+    he.cancelScheduledValues(now); he.setValueAtTime(he.value, now); he.linearRampToValueAtTime(0, fadeEnd);
+    this.heartOsc.frequency.cancelScheduledValues(now);
     this.ci = -1;            // -1：先用一小节 VII 级和弦做引子，再进入 i 级与动机
     this.step = 0;
     this.nextT = t;
@@ -556,17 +585,21 @@ export class OceanAudio {
 
   _tick() {
     if (!this._live()) return;
-    const now = this.ctx.currentTime;
-    // 主线程卡顿 / 计时器被节流：整体跳过错过的格子，不补发音符
-    if (now - this.nextT > 0.25) {
-      const n = Math.ceil((now - this.nextT) / STEP) + 1;
-      this.step += n; this.nextT += n * STEP;
-      if (this.step >= this.chordEnd) this._nextChord(this.step, this.nextT);
+    const now = this.ctx.currentTime, safe = now + 0.012;
+    // 主线程卡顿 / 计时器被节流（> 0.2 s）时，下一格可能已经落在“过去”。
+    // 绝不把音符排在过去：那样声源会立即开始、包络却从中途算起 → 没有起音的“咔”声。
+    // 轻微迟到（≤ 80 ms）的那一格推迟到 safe 时刻演奏；更晚的格子整体跳过、不补发。
+    if (this.nextT < safe - 0.08) {
+      const n = Math.ceil((safe - this.nextT) / STEP);
+      this.step += n; this.nextT += n * STEP;          // 跨过和弦边界时，由 _step → _nextChord 按小节线对齐
     }
     while (this.nextT < now + LOOKAHEAD) {
-      this._step(this.step, this.nextT);
+      const s = this.step, t = Math.max(this.nextT, safe);
       this.step++;
       this.nextT += STEP;
+      try { this._step(s, t); } catch (e) {            // 单个音符出错也不能让调度器卡死在同一格
+        if (!this._warned) { this._warned = true; console.warn('[OceanAudio] step error:', e); }
+      }
     }
     // setDepth 停止调用（例如页面停在某处）时，把最后的深度补上
     if (Math.abs(this._depth - this._depthApplied) > 0.3 + this._depthApplied * 0.004) {
@@ -624,15 +657,20 @@ export class OceanAudio {
   _nextChord(s, t) {
     if (this.ci < 0) { this.ci = 3; this.len = BAR; }                       // 引子：从 VII（或 v）级进入
     else { this.ci = (this.ci + 1) % 4; this.len = (this.zone === 3 ? 4 : 2) * BAR; }
-    this.chordStart = s;
-    this.chordEnd = s + this.len;
+    // 和弦边界始终落在小节线上（step 0 起每 16 格一小节）。正常情况下 s 本身就在小节线上；
+    // 卡顿跳格后 s 可能落在小节中间——仍把和弦起点对齐到所在小节的开头，
+    // 这样琶音型、心跳、每小节事件和动机都不会相对小节线错位（错过的动机音符会被跳过）。
+    const start = s - (s % BAR);
+    this.chordStart = start;
+    this.chordEnd = start + this.len;
     this.chord = (this.zone >= 2 ? PROG_DARK : PROG_LIGHT)[this.ci];
-    this._setChord(this.chord, t, this.len * STEP);
-    if (this.ci === 0) this._newCycle(s);
+    this._setChord(this.chord, t, (this.chordEnd - s) * STEP, this.len * STEP > 12);
+    if (this.ci === 0) this._newCycle(start);
   }
 
   // 交叉淡化：新和弦写入已经静音一个和弦长度的那组振荡器，再把两组的包络交换
-  _setChord(c, t, dur) {
+  // dur：从 t 起本和弦还剩的时长；slow：深渊层的 4 小节长和弦（更慢的起音与释放）
+  _setChord(c, t, dur, slow) {
     const inB = this.banks[1 - this.cur], outB = this.banks[this.cur];
     this.cur = 1 - this.cur;
     inB.voices.forEach((v, i) => {
@@ -642,7 +680,9 @@ export class OceanAudio {
     inB.air.forEach((o, i) => o.frequency.setValueAtTime(mtof(c.air[i]), t));
     inB.sub.frequency.setValueAtTime(mtof(c.root), t);
     inB.tri.frequency.setValueAtTime(mtof(c.root + 12), t);
-    const slow = dur > 12, atk = slow ? 2.0 : 1.15, rel = slow ? 2.4 : 1.45;
+    const atk = slow ? 2.0 : 1.15, rel = slow ? 2.4 : 1.45;
+    // 清掉 t 之后残留的包络事件（例如卡顿后提前换和弦时，旧和弦尚未执行的低音膨胀）
+    for (const b of [inB, outB]) for (const p of [b.padEnv.gain, b.airEnv.gain, b.bassEnv.gain]) p.cancelScheduledValues(t);
     inB.padEnv.gain.setTargetAtTime(1, t, atk);
     inB.airEnv.gain.setTargetAtTime(1, t + 0.5, atk * 1.4);
     // 次低音：进入后缓慢膨胀到最强，再回落
@@ -696,6 +736,13 @@ export class OceanAudio {
       this._bell(t + rnd(0, 0.012), n.m, LV.bell * M.gain * accent * rnd(0.92, 1.04), decay, pan);
     }
     if (M.i >= M.notes.length) this.motif = null;
+  }
+
+  // 把音高吸附到当前和弦最近的和弦音（优先向下半音、其次向上，最多 ±2 半音）
+  _snap(m) {
+    const pcs = this.chord.pcs;
+    for (const d of [0, -1, 1, -2, 2]) if (pcs.has(pc(m + d))) return m + d;
+    return m;
   }
 
   _tonesIn(lo, hi) {
@@ -826,18 +873,22 @@ export class OceanAudio {
   // 鲸歌：锯齿波 + 次八度正弦，经两个移动的共振峰带通，音高在当前和弦的根音/五度/八度之间滑动，带颤音
   _whale(t, vol = 1) {
     if (this.active.whale >= 2) return;
-    const ctx = this.ctx, f = mtof(this.chord.root + 12);
+    const ctx = this.ctx, base = this.chord.root + 12;
+    // 轮廓用相对根音的半音数写（0 根音 / 7 五度 / 5 四度 / 12 八度 / 2 九度 / -5 下方四度），
+    // 每个停留音再吸附到当前和弦最近的和弦音——旧版固定用 4/3 的“四度”，
+    // 在 B♭maj9 上是调外的 E♭、在 Fmaj9 上是与 A 冲突的 B♭、在 Cadd9 上是与 E 冲突的 F，并停留近一秒。
     const CONTOURS = [
-      [[0, 1], [1.3, 1.5], [2.4, 1.335], [3.3, 1.5], [4.7, 1], [5.8, 0.75]],
-      [[0, 0.75], [1.0, 1], [2.1, 1.5], [2.8, 2], [4.0, 1.5], [5.4, 1]],
-      [[0, 1.5], [0.9, 2], [1.9, 1.5], [3.1, 1], [4.3, 1.125], [5.5, 0.75]],
+      [[0, 0], [1.3, 7], [2.4, 5], [3.3, 7], [4.7, 0], [5.8, -5]],
+      [[0, -5], [1.0, 0], [2.1, 7], [2.8, 12], [4.0, 7], [5.4, 0]],
+      [[0, 7], [0.9, 12], [1.9, 7], [3.1, 0], [4.3, 2], [5.5, -5]],
     ];
     const pat = pick(CONTOURS), dur = pat[pat.length - 1][0] + 0.8;
-    const o = this._osc('sawtooth', f * pat[0][1]), sub = this._osc('sine', f * pat[0][1] * 0.5);
-    for (const [dt, r] of pat) {
-      o.frequency.setTargetAtTime(f * r, t + dt, 0.22);
-      sub.frequency.setTargetAtTime(f * r * 0.5, t + dt, 0.22);
-    }
+    const hz = pat.map(([, off]) => mtof(this._snap(base + off)));
+    const o = this._osc('sawtooth', hz[0]), sub = this._osc('sine', hz[0] * 0.5);
+    pat.forEach(([dt], k) => {
+      o.frequency.setTargetAtTime(hz[k], t + dt, 0.22);
+      sub.frequency.setTargetAtTime(hz[k] * 0.5, t + dt, 0.22);
+    });
     const vib = this._osc('sine', rnd(3.8, 4.8)), vibAmt = ctx.createGain();
     vibAmt.gain.setValueAtTime(0, t);
     vibAmt.gain.linearRampToValueAtTime(24, t + dur * 0.45);
@@ -897,7 +948,10 @@ export class OceanAudio {
       mod.connect(modAmt); modAmt.connect(car.frequency); car.connect(amp); amp.connect(p); p.connect(this.sends.click);
       const srcs = [car, mod], nodes = [car, mod, modAmt, amp, p];
       if (s >= 1.6) {                                       // 强击：再叠一个高八度的光晕
-        const hi = this._osc('sine', f * 2), hg = ctx.createGain();
+        // 注意：GainNode 默认增益为 1——必须从 t 起就把它压到 0.0001，
+        // 否则 t..t+20 ms 之间会漏出一段满幅正弦（曾导致强击峰值 ≈0.66 的“咔”声）
+        const hi = this._osc('sine', f * 2), hg = this._gain(0.0001);
+        hg.gain.setValueAtTime(0.0001, t);
         hg.gain.setValueAtTime(0.0001, t + 0.02);
         hg.gain.exponentialRampToValueAtTime(vel * 0.35, t + 0.03);
         hg.gain.exponentialRampToValueAtTime(0.0001, t + decay * 0.8);

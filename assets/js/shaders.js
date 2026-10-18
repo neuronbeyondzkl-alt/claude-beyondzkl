@@ -238,13 +238,15 @@ void main() {
     flash += ring * 1.3 + exp(-dist * dist / 0.01) * exp(-age * 5.0) * c.w * 1.2;
   }
 
+  float ol = length(offs);
+  if (ol > 0.3) offs *= 0.3 / ol;          // 位移上限，避免极端甩动把形体撕开
   mv.xy += offs * (-mv.z) * uTanHalfFov * uMotion;
   gl_Position = projectionMatrix * mv;
 
   // 颜色：插值后做 HSV 饱和度硬钳制 → 任何颜色都只能是低饱和度
   vec3 col = mix(ca.rgb, cb.rgb, m);
   flash = min(flash, 3.0);
-  col = mix(col, vec3(0.42, 0.78, 0.82), clamp(flash * 0.3, 0.0, 0.55));
+  col = mix(col, vec3(0.604, 0.708, 0.831), clamp(flash * 0.3, 0.0, 0.55));   // 受扰发光：混向 Loyel #CCDBEB
   vec3 sc = pow(max(col, vec3(0.0)), vec3(1.0 / 2.2));
   float mx = max(sc.r, max(sc.g, sc.b));
   float mn = min(sc.r, min(sc.g, sc.b));
@@ -257,7 +259,7 @@ void main() {
   float tw = 0.86 + 0.14 * sin(uTime * (0.8 + aRand.y * 1.6) + aRand.z * TAU);
   if (sz > 1.9) tw = 0.55 + 0.6 * pow(0.5 + 0.5 * sin(uTime * (0.7 + aRand.y) + aRand.z * TAU), 2.0);
   float br = mix(a.w, b.w, m) * tw * mix(uAlphaA, uAlphaB, m);
-  float fog = smoothstep(34.0, 9.0, -mv.z) * (0.35 + 0.65 * it);
+  float fog = (1.0 - smoothstep(9.0, 34.0, -mv.z)) * (0.35 + 0.65 * it);
   col *= br * (0.34 + 0.2 * uGlow) * mix(0.15, 1.0, fog) * (1.0 + 0.4 * s) * (1.0 + flash * 0.9);
   vColor = col;
 
@@ -383,7 +385,7 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
   gl_PointSize = (1.0 + aSeed.w * 2.2) * uPixelRatio * (1.0 + uGlow * 0.8) * (12.0 / -mv.z);
-  vA = uOpacity * (0.25 + 0.75 * aSeed.w) * smoothstep(30.0, 6.0, -mv.z) * (0.6 + 0.4 * sin(uTime * 0.8 + aSeed.x * 40.0));
+  vA = uOpacity * (0.25 + 0.75 * aSeed.w) * (1.0 - smoothstep(6.0, 30.0, -mv.z)) * (0.6 + 0.4 * sin(uTime * 0.8 + aSeed.x * 40.0));
 }
 `;
 
@@ -487,7 +489,7 @@ void main() {
   p.y -= sign(uVel) * len * aEnd;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  vA = smoothstep(0.35, 2.5, abs(uVel)) * 0.55 * (1.0 - aEnd) * smoothstep(30.0, 6.0, -mv.z) * (0.25 + 0.75 * aSeed.w);
+  vA = smoothstep(0.35, 2.5, abs(uVel)) * 0.55 * (1.0 - aEnd) * (1.0 - smoothstep(6.0, 30.0, -mv.z)) * (0.25 + 0.75 * aSeed.w);
 }
 `;
 
