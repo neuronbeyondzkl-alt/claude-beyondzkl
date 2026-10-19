@@ -96,7 +96,9 @@ def main():
             fh.write(f"file '{j[3]}'\n")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
                     "-ss", f"{a.start:.3f}", "-t", f"{a.end - a.start:.3f}", "-i", wav,
-                    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
+                    "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+                    "-af", "volume=-1.5dB",          # 给 AAC 编码的过冲留余量，避免重击处削波
+                    "-c:a", "aac", "-b:a", "256k",
                     "-movflags", "+faststart", "-shortest", a.out], check=True)
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"完成：{a.out}  用时 {(time.time() - t) / 60:.1f} min")
