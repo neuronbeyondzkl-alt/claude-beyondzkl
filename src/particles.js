@@ -37,6 +37,7 @@ uniform float uSparkGain;
 uniform vec4 uWaves[8];
 uniform vec4 uWaveQ[8];
 uniform vec4 uWaveR[8];
+uniform vec4 uWaveE[24]; // 每个波 3 个 vec4：接力链 12 个神经元的阈值（见波循环里的说明）
 uniform float uHoverV;
 uniform vec3 uDepolCol;
 uniform float uCaGain;
@@ -119,11 +120,15 @@ void main() {
   p = mix(ip, p, ie);
 
   // 颜色：点缀色可被“色彩丰富度”收回为低饱和蓝
-  // a 通道 = 尺寸 + 10×点缀 + 20×树突
-  float dendA = step(19.5, cA.a);
-  float dendB = step(19.5, cB.a);
-  float aA = cA.a - 20.0 * dendA;
-  float aB = cB.a - 20.0 * dendB;
+  // a 通道 = 尺寸 + 10×点缀 + 20×树突 + 40×(所属接力链神经元序号 + 1)
+  float ownA = floor(cA.a / 40.0);
+  float ownB = floor(cB.a / 40.0);
+  float a0A = cA.a - 40.0 * ownA;
+  float a0B = cB.a - 40.0 * ownB;
+  float dendA = step(19.5, a0A);
+  float dendB = step(19.5, a0B);
+  float aA = a0A - 20.0 * dendA;
+  float aB = a0B - 20.0 * dendB;
   float accA = step(9.5, aA);
   float accB = step(9.5, aB);
   vec3 fallback = uBaseBlue * (0.75 + aRand.z * 0.5);
@@ -135,6 +140,7 @@ void main() {
   // 动作电位：沿路径参数传播的彗星状光点；uPhase 由 CPU 积分，点击越快流速越快
   float path = m < 0.5 ? pA.w : pB.w;
   float dend = m < 0.5 ? dendA : dendB;
+  float owner = (m < 0.5 ? ownA : ownB) - 1.0; // -1 = 不属于首页接力链
   float neur = (path >= 0.0 && path < 400.0) ? 1.0 : 0.0;
   float spark = 0.0;
   if (path >= 0.0) {
@@ -167,16 +173,28 @@ void main() {
     if (fade <= 0.0) continue;
     float d = distance(pm, W.xyz);
     if (Q.z >= 0.0) {
-      if (path >= Q.z - 0.02 && neur > 0.5) {
+      // 接力路线阈值 thr：-2 = 不区分神经元；-1 = 被点中的神经元；>= 0 = 下游神经元的突触入口路径（之后才点亮）；
+      // >= 1e8 = 不在这次接力的路线上（不点亮）
+      float thr = -2.0;
+      if (owner >= 0.0) {
+        int oi = int(owner + 0.5);
+        int oc = oi - (oi / 4) * 4;
+        vec4 E = uWaveE[i * 3 + oi / 4];
+        thr = oc == 0 ? E.x : (oc == 1 ? E.y : (oc == 2 ? E.z : E.w));
+      }
+      if (path >= Q.z - 0.02 && neur > 0.5 && thr < 1e8) {
         float gate = 1.0 - smoothstep(Q.x, Q.x + 0.6, d);
         float fp = path - Q.w;
         float head = exp(-fp * fp * uWaveSharp);
         float tail = fp < 0.0 ? exp(fp * 3.0) * 0.3 : 0.0;
         float shape = (head + tail) * gate;
         if (dend > 0.5) {
-          // 被点中的神经元内：电紧张性扩布，离刺激点越远越弱；下游神经元：由突触输入重新开始
-          float g = (Rw.x >= 0.0 && path <= Rw.x) ? Rw.y * exp(-max(0.0, path - Q.z) * 0.12) : fade * 0.8;
-          wg = max(wg, shape * g * 0.62);
+          // 被点中的神经元：电紧张性扩布，离刺激点越远越弱；下游神经元：突触入口之后才去极化，并向胞体递减
+          float g = -1.0;
+          if (thr >= 0.0) g = path >= thr ? fade * 0.8 * exp(-(path - thr) * 0.12) : -1.0;
+          else if (thr > -1.5 || (Rw.x >= 0.0 && path <= Rw.x) || (Rw.x < 0.0 && Rw.z > 0.5)) g = Rw.y * exp(-max(0.0, path - Q.z) * 0.12);
+          else g = fade * 0.8;
+          if (g > 0.0) wg = max(wg, shape * g * 0.62);
         } else {
           wv = max(wv, shape * fade);
           wvS = max(wvS, shape);
@@ -188,7 +206,7 @@ void main() {
       if (dend > 0.5) wg = max(wg, stimS * Rw.y * 0.7);
       else {
         wv = max(wv, stimS * Rw.y);
-        wvS = max(wvS, stimS);
+        if (neur > 0.5) wvS = max(wvS, stimS); // 只有胞体 / 轴突上的刺激才算发放；膜与星尘保持蓝色
       }
     } else {
       float fr = d - Q.x;
@@ -197,7 +215,7 @@ void main() {
       if (dend > 0.5) wg = max(wg, ring * fade * 0.7);
       else {
         wv = max(wv, ring * fade);
-        wvS = max(wvS, ring);
+        wvS = max(wvS, ring * fade); // 去极化环只有足够强时峰顶才偏琥珀，弱的自发环保持蓝色
         refr = max(refr, fade * (1.0 - smoothstep(-0.25, 0.0, fr)) * exp(fr * 0.8));
       }
     }
@@ -385,6 +403,7 @@ export class ParticleField {
       uWaves: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, -1e6)) },
       uWaveQ: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, -1, 0)) },
       uWaveR: { value: Array.from({ length: 8 }, () => new THREE.Vector4(-1, 0, 0, 0)) },
+      uWaveE: { value: Array.from({ length: 24 }, () => new THREE.Vector4(-2, -2, -2, -2)) },
       uHoverV: { value: 0 },
       uDepolCol: { value: new THREE.Vector3(...PAL.c30) },
       uCaGain: { value: 0.7 },
@@ -492,13 +511,45 @@ export class ParticleField {
   // 波前到达所在路径带的上限（ceil）就退场，不会窜到别的结构或星尘上
   // fastUntil：波前在该路径值之前按 fastMul 倍速推进（树突上的电紧张性扩布几乎是瞬时的）
   // regen：再生性动作电位（全或无、不递减），幅度不随时间衰减，只在寿命末尾淡出；分级部分仍按 decay 衰减
-  emitWave(origin, { strength = 1, seedPath = -1, gate = true, vMul = 1, decay = 0.45, life = 7, ceil = Infinity, gateR0 = 0, fastUntil = -1, fastMul = 1, regen = false } = {}) {
+  // owner / shapeIdx：被点中（或发放）的接力链神经元及其所在形态，用于只点亮它和它的真实下游；seedDend：起点在树突上
+  emitWave(origin, { strength = 1, seedPath = -1, gate = true, vMul = 1, decay = 0.45, life = 7, ceil = Infinity, gateR0 = 0, fastUntil = -1, fastMul = 1, regen = false, owner = -1, shapeIdx = -1, seedDend = false } = {}) {
     let i = this.waves.findIndex((w) => !w.alive);
-    // 槽位用满时替换当前最弱的那个
-    if (i < 0) i = this.waves.reduce((o, w, k) => (w.amp < this.waves[o].amp ? k : o), 0);
+    if (i < 0) {
+      // 槽位用满时：优先替换波前已离开结构或正在淡出的波，否则替换最老的
+      const now = this.uniforms.uTime.value;
+      let bs = Infinity;
+      for (let k = 0; k < this.waves.length; k++) {
+        const w = this.waves[k];
+        const gone = (w.seedPath >= 0 && w.front > w.ceil - 0.6) || now - w.t0 > w.life - 0.8;
+        const s = w.t0 - (gone ? 1e6 : 0);
+        if (s < bs) {
+          bs = s;
+          i = k;
+        }
+      }
+    }
     life = Math.min(life, 11); // 着色器里的寿命上限是 12 秒
     const w = this.waves[i];
-    Object.assign(w, { alive: true, t0: this.uniforms.uTime.value, front: seedPath, gateR: gate ? gateR0 : 99, gate, strength, seedPath, vMul, decay, life, ceil, amp: strength, gAmp: strength, fastUntil, fastMul, regen });
+    Object.assign(w, { alive: true, t0: this.uniforms.uTime.value, front: seedPath, gateR: gate ? gateR0 : 99, gate, strength, seedPath, vMul, decay, life, ceil, amp: strength, gAmp: strength, fastUntil, fastMul, regen, seedDend });
+    // 接力路线：被点中的神经元 = -1，沿接力链（有向无环图）向下游传播，记录每个下游神经元最早的突触入口路径
+    // 用普通数组（float64）：若用 Float32Array，写入时的舍入会让 e.entry < E[post] 永远成立而死循环
+    const E = this._E || (this._E = new Array(12));
+    E.fill(-2);
+    const m = shapeIdx >= 0 && this.metas && this.metas[shapeIdx];
+    if (owner >= 0 && owner < 12 && m && m.edges) {
+      E.fill(1e9);
+      E[owner] = -1;
+      for (let changed = true, guard = 0; changed && guard < 64; guard++) {
+        changed = false;
+        for (const e of m.edges) {
+          if (E[e.pre] < 1e8 && E[e.post] !== -1 && e.entry < E[e.post]) {
+            E[e.post] = e.entry;
+            changed = true;
+          }
+        }
+      }
+    }
+    for (let k = 0; k < 3; k++) this.uniforms.uWaveE.value[i * 3 + k].set(E[k * 4], E[k * 4 + 1], E[k * 4 + 2], E[k * 4 + 3]);
     this.uniforms.uWaves.value[i].set(origin[0], origin[1], origin[2], w.t0);
     this._syncWave(i);
   }
@@ -506,7 +557,7 @@ export class ParticleField {
   _syncWave(i) {
     const w = this.waves[i];
     this.uniforms.uWaveQ.value[i].set(w.gateR, w.alive ? w.amp : 0, w.seedPath, w.front);
-    this.uniforms.uWaveR.value[i].set(w.alive ? w.fastUntil : -1, w.alive ? w.gAmp : 0, 0, 0);
+    this.uniforms.uWaveR.value[i].set(w.alive ? w.fastUntil : -1, w.alive ? w.gAmp : 0, w.seedDend ? 1 : 0, 0);
   }
 
   // vPath：路径单位/秒；gateK：空间门扩张速度与路径速度之比
@@ -553,7 +604,10 @@ export class ParticleField {
   bandTop(index, path) {
     const m = this.metas && this.metas[index];
     if (!m || path < 0) return Infinity;
-    for (const [a, b] of m.bands) if (path >= a && path < b) return b;
+    for (let k = 0; k < m.bands.length; k++) {
+      const [a, b] = m.bands[k];
+      if (path >= a && path < b) return m.bandMax ? Math.min(b, m.bandMax[k] + 0.6) : b;
+    }
     return Infinity;
   }
 
@@ -606,7 +660,7 @@ export class ParticleField {
           pick = sm;
         }
       }
-      if (pick) return { p: pick.p.slice(), path: pick.path, shape };
+      if (pick) return { p: pick.p.slice(), path: pick.path, shape, owner: meta.somata.indexOf(pick) };
     }
     const lp = this._lp || (this._lp = new Float32Array(5));
     const best = this._best || (this._best = new Float32Array(5));
@@ -640,10 +694,10 @@ export class ParticleField {
       // 所以标记与归属要从同一个形态里读
       const side = bestN[4];
       const ms = this.metas && this.metas[side];
-      const dend = this.colData[(side * this.count + idxN) * 4 + 3] >= 19.5;
+      const dend = this.colData[(side * this.count + idxN) * 4 + 3] % 40 >= 19.5;
       const own = ms && ms.owner ? ms.owner[idxN] : 255;
       const sm = own < 255 && ms.somata ? ms.somata[own] : null;
-      return { p: [bestN[0], bestN[1], bestN[2]], path: bestN[3], shape: side, dend, somaPath: sm ? sm.path : -1 };
+      return { p: [bestN[0], bestN[1], bestN[2]], path: bestN[3], shape: side, dend, somaPath: sm ? sm.path : -1, owner: sm ? own : -1 };
     }
     if (found) return { p: [best[0], best[1], best[2]], path: -1, shape };
     // 附近没有粒子：射线与本地 z=0 平面求交

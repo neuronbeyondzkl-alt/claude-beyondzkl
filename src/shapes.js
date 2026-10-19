@@ -32,6 +32,8 @@ export const PAL = {
 const ACCENT = 10;
 // 树突标记：颜色纹理 a 通道 = 尺寸 + 10×点缀 + 20×树突。点击波在树突上显示为蓝色分级电位，到胞体/轴突才是琥珀色动作电位
 const DEND = 20;
+// 归属标记：+ 40×(所属接力链神经元序号 + 1)，着色器据此只点亮被点中的神经元及其真实下游
+const OWN = 40;
 const TAU = Math.PI * 2;
 
 // ---------- 向量小工具 ----------
@@ -263,7 +265,7 @@ class Builder {
     this.col[k] = c[0];
     this.col[k + 1] = c[1];
     this.col[k + 2] = c[2];
-    this.col[k + 3] = size + (accent ? ACCENT : 0) + (dend ? DEND : 0);
+    this.col[k + 3] = size + (accent ? ACCENT : 0) + (dend ? DEND : 0) + (this.curOwner < 255 ? (this.curOwner + 1) * OWN : 0);
   }
   addP(p, path, c, size, accent, dend) {
     this.add(p[0], p[1], p[2], path, c, size, accent, dend);
@@ -427,7 +429,11 @@ function shapeHero(b, opts = {}) {
 
   // 有向连接链（DAG）：路径参数在突触两侧连续（只差一个突触延迟），波前与环境电流都能“接力”到下一个神经元
   const B = {};
-  const relay = (pre, dBout, post, dEntry) => B[pre.id] + (pre.dMax + dBout) / SP + DELTA - (post.dMax - dEntry) / SP;
+  const edges = []; // 路径连续的接力连接 [突触前, 突触后, 入口离胞体的树突距离]
+  const relay = (pre, dBout, post, dEntry) => {
+    edges.push([pre.id, post.id, dEntry]);
+    return B[pre.id] + (pre.dMax + dBout) / SP + DELTA - (post.dMax - dEntry) / SP;
+  };
   const back = (pre, dBout, post, dEntry) => B[post.id] + (post.dMax - dEntry) / SP - DELTA - (pre.dMax + dBout) / SP;
   B.L = 0;
   const dLC = connect(R, L, C, basalOf(C, -1));
@@ -438,6 +444,7 @@ function shapeHero(b, opts = {}) {
   const upTo = (u, post, uu) => {
     const dB = connect(R, u, post, post.trunk.poly.at(uu), 0.15);
     B[u.id] = back(u, dB, post, uu * post.trunk.poly.len);
+    edges.push([u.id, post.id, uu * post.trunk.poly.len]);
   };
   if (cells.U3) upTo(cells.U3, L, 0.7);
   upTo(cells.U1, C, 0.72);
@@ -445,6 +452,7 @@ function shapeHero(b, opts = {}) {
   if (cells.U4) {
     const dB = connect(R, cells.U4, Rn, add(Rn.trunk.poly.at(1), [0.2, 0.25, 0]), 0.1);
     B.U4 = back(cells.U4, dB, Rn, Rn.trunk.poly.len + 0.3 * Rn.k);
+    edges.push(['U4', 'R', Rn.trunk.poly.len + 0.3 * Rn.k]);
   }
   const shift = 0.25 - Math.min(...Object.values(B));
   for (const k of Object.keys(B)) B[k] += shift;
@@ -600,7 +608,9 @@ function shapeHero(b, opts = {}) {
   const src = portrait ? cells.U1 : cells.U3;
   b.meta = {
     somata: order.map((id) => ({ id, p: cells[id].S.slice(), k: cells[id].k, path: B[id] + cells[id].dMax / SP })),
-    source: { p: src.S.slice(), path: B[src.id] + src.dMax / SP },
+    source: { p: src.S.slice(), path: B[src.id] + src.dMax / SP, owner: order.indexOf(src.id) },
+    // 突触后神经元的入口路径 = 突触小体路径 + 突触延迟（relay / back 的定义保证了这一点）
+    edges: edges.map(([a, p, dE]) => ({ pre: order.indexOf(a), post: order.indexOf(p), entry: B[p] + (cells[p].dMax - dE) / SP })),
     bands: [
       [0, 200],
       [200, 300],
@@ -1845,6 +1855,15 @@ export function generateShape(index, n, opts = {}) {
       directional: !!SHAPES[index].directional,
     };
   }
+  // 每个路径带里实际最大的路径值：波前越过它就退场（不再白占槽位）
+  meta.bandMax = meta.bands.map(([lo, hi]) => {
+    let mx = lo;
+    for (let i = 0; i < n; i++) {
+      const p = b.pos[i * 4 + 3];
+      if (p >= lo && p < hi && p > mx) mx = p;
+    }
+    return mx;
+  });
   const order = new Uint32Array(n);
   for (let i = 0; i < n; i++) order[i] = i;
   const key = new Float32Array(n);

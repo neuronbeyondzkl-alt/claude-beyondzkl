@@ -152,7 +152,7 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
       // 再生性动作电位：在胞体与轴突上全幅、不递减（只在寿命末尾淡出）；树突上的分级电位随时间（decay）并在着色器里按距离递减
       // 点在树突上：分级电位以 3 倍速电紧张性地扩布到本神经元的胞体，再在那里发放
       const toSoma = hit.dend && hit.somaPath > hit.path ? hit.somaPath : -1;
-      field.emitWave(hit.p, { strength: amp, seedPath: hit.path, gate: true, decay: 0.16, ceil: field.bandTop(hit.shape, hit.path), fastUntil: toSoma, fastMul: 3, regen: true });
+      field.emitWave(hit.p, { strength: amp, seedPath: hit.path, gate: true, decay: 0.16, ceil: field.bandTop(hit.shape, hit.path), fastUntil: toSoma, fastMul: 3, regen: true, owner: hit.owner ?? -1, shapeIdx: hit.shape, seedDend: !!hit.dend });
     } else {
       field.emitWave(hit.p, { strength: amp, seedPath: -1, gate: true });
     }
@@ -368,7 +368,7 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
     const m = shapeMeta(idx);
     if (!field || !m) return;
     if (m.directional) {
-      field.emitWave(m.source.p, { gate: true, seedPath: m.source.path, ceil: field.bandTop(idx, m.source.path), ...opts });
+      field.emitWave(m.source.p, { gate: true, seedPath: m.source.path, ceil: field.bandTop(idx, m.source.path), owner: m.source.owner ?? -1, shapeIdx: idx, ...opts });
     } else {
       field.emitWave(m.centroid || [0, 0, 0], { seedPath: -1, gate: true, ...opts, strength: (opts.strength || 0.75) * 0.8 });
     }
@@ -454,8 +454,9 @@ export function createInteractions({ field, audio, dots, reduceMotion, accent, s
         if (!reduceMotion && !document.hidden && t > quietUntil) {
           const m = shapeMeta(shape);
           if (shape === 0 && m && m.somata) {
-            const sm = m.somata[Math.floor(Math.random() * Math.min(7, m.somata.length))];
-            field.emitWave(sm.p, { strength: 0.32, seedPath: sm.path, gate: true, ceil: field.bandTop(0, sm.path) });
+            const k = Math.floor(Math.random() * Math.min(7, m.somata.length));
+            const sm = m.somata[k];
+            field.emitWave(sm.p, { strength: 0.32, seedPath: sm.path, gate: true, ceil: field.bandTop(0, sm.path), owner: k, shapeIdx: 0 });
           } else field.emitWave(field.randomLocal(), { strength: 0.32, seedPath: -1, gate: true });
         }
       }
