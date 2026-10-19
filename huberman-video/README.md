@@ -44,7 +44,11 @@ pip install numpy scipy opencv-python-headless pillow
 ./fetch_fonts.sh                                   # Noto Sans SC（SIL OFL 1.1）
 python3 music.py build/music.wav                   # 约 35 秒
 python3 render.py stills 22.5 76                   # 可选：先看静帧
-python3 render.py video build/music.wav huberman_wisdom.mp4 4
+python3 render.py video build/music.wav build/huberman_wisdom.mp4 4   # 4 进程约 6 分钟，CRF 20 母版约 97 MB
+# 仓库里的成片是两遍编码压到 3.3 Mbps 的版本（约 48 MB，低于 GitHub 单文件限制）
+ffmpeg -i build/huberman_wisdom.mp4 -c:v libx264 -preset slow -b:v 3300k -pass 1 -an -f mp4 /dev/null
+ffmpeg -i build/huberman_wisdom.mp4 -c:v libx264 -preset slow -b:v 3300k -maxrate 9000k -bufsize 12000k \
+       -pass 2 -pix_fmt yuv420p -c:a copy -movflags +faststart huberman_wisdom.mp4
 ```
 
 | 文件 | 作用 |
