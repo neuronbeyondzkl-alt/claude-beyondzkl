@@ -1,0 +1,5 @@
+__pycache__/
+cache/
+output/score.wav
+output/render.log
+output/preview*.mp4
