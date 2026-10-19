@@ -1,6 +1,6 @@
 # 最会用脑 · 一支 2 分 12 秒的光影短片
 
-成片：[`最会用脑.mp4`](最会用脑.mp4)（1920×1080 · 30 fps · H.264 + AAC）
+成片：[`最会用脑.mp4`](最会用脑.mp4)（2 分 12 秒 · 1920×1080 · 30 fps · H.264 + AAC · 约 48 MB）
 
 用光、影和荧光粒子回答一个问题：**什么样的人，才算“最会用脑”？**
 
@@ -53,7 +53,7 @@
 cd brain-film
 node fetch-fonts.mjs        # 改了片中文字后才需要：重新下载只含所用字符的 Noto 字体子集
 python3 music.py            # 合成配乐 → music.wav（约 45 秒）
-node capture.cjs            # 逐帧渲染并混入配乐 → 最会用脑.mp4
+node capture.cjs            # 逐帧渲染并混入配乐 → 最会用脑.mp4（CRF 20，约 100 MB；仓库里放的是两遍编码 2.6 Mbps 的版本）
 node capture.cjs --stills 50,76,106 /tmp/stills   # 只导出几张静帧做预览
 ```
 
