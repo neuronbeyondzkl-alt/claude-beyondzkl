@@ -404,7 +404,9 @@ class Renderer:
         Yf, Xf = np.mgrid[0:H, 0:W].astype(np.float32)
         rr = np.sqrt(((Xf - W / 2) / (W / 2)) ** 2 + ((Yf - H / 2) / (H / 2)) ** 2) / np.sqrt(2)
         self.vig = (1 - 0.48 * rr ** 2.2).astype(np.float32)[..., None]
-        self.grain = [(rng.standard_normal((H, W)).astype(np.float32) * 0.011) for _ in range(6)]
+        # 胶片颗粒：逐帧随机噪声会让码率翻倍，默认关闭，可用环境变量 TFS_GRAIN=0.011 打开
+        ga = float(os.environ.get("TFS_GRAIN", "0"))
+        self.grain = [(rng.standard_normal((H, W)).astype(np.float32) * ga) for _ in range(6)] if ga > 0 else None
         self.ax4096 = np.arange(4096, dtype=np.float32)
         self.txt_rgb = np.zeros((H, W, 3), np.float32)
         self.txt_a = np.zeros((H, W), np.float32)
@@ -438,7 +440,7 @@ class Renderer:
             d = t - th
             if d < 0 or d > 2.5:
                 continue
-            flash += s * FL[kind] * np.exp(-d / 0.09)
+            flash += s * FL[kind] * np.exp(-d / 0.07)
             a = s * SH[kind] * np.exp(-d / 0.17)
             sx += a * np.sin(2 * np.pi * 21 * d + k * 1.7)
             sy += a * np.cos(2 * np.pi * 17 * d + k * 2.3)
@@ -564,7 +566,7 @@ class Renderer:
                     w = w * np.exp(-tr / 0.07)
                     e = f["power"] * 340 * (1 - np.exp(-tr / 0.12)) * np.exp(-tr / 1.6)
                     ox, oy = f["dirs"][:, 0] * e, f["dirs"][:, 1] * e
-                    boost[idx] += 1.6 * np.exp(-tr / 0.3)
+                    boost[idx] += (0.35 if f["kind"] == "point" else 1.6) * np.exp(-tr / 0.25)
                 else:
                     w = w * np.exp(-tr / 0.6)
                     e = (1 - np.exp(-tr / 1.0)) * np.exp(-tr / 3.0)
@@ -629,7 +631,7 @@ class Renderer:
         dens = V["density"]
         vis = np.maximum(clamp01((dens - self.rank) / 0.04), fvis)
         tw = 0.75 + 0.25 * np.sin(2 * np.pi * self.twf * t + self.p[0])
-        br = self.b * V["bright"] * tw * vis * np.maximum(1 + boost, 0) * (1 + pulse * kenv * 0.9) * (1 + 0.8 * flash)
+        br = self.b * V["bright"] * tw * vis * np.maximum(1 + boost, 0) * (1 + pulse * kenv * 0.9) * (1 + 0.4 * flash)
         hdr = None
         for lay, sc, sig, gain in ((0, 1.0, 0.85, 3.2), (1, 0.5, 1.1, 3.0), (2, 0.25, 5.0, 26.0)):
             m = (self.layer == lay) & (br > 0.004)
@@ -707,7 +709,7 @@ class Renderer:
         streak = cv2.blur(cv2.blur(np.maximum(l3 - 0.25, 0), (61, 1)), (61, 1))
         lum = streak.mean(axis=2, keepdims=True)
         streak = lum * C50 + streak * 0.3
-        acc = acc * 0.24 + streak * (0.35 + 0.8 * min(stream, 1.5))
+        acc = acc * 0.24 + streak * (0.3 + 0.45 * min(stream, 1.5))
         acc = cv2.resize(acc, (W // 4, H // 4)) + cv2.GaussianBlur(l2, (0, 0), 2.5) * (0.8 * 0.24)
         acc = cv2.resize(acc, (W2, H2)) + cv2.GaussianBlur(hh, (0, 0), 2) * (0.6 * 0.24)
         hdr += cv2.resize(acc, (W, H), interpolation=cv2.INTER_LINEAR)
@@ -741,7 +743,8 @@ class Renderer:
             reg *= (1 - ta)[..., None]
             reg += self.txt_rgb[Y0:Y1, X0:X1] * V["exposure"]
         hdr *= self.vig
-        hdr += self.grain[fi % 6][..., None]
+        if self.grain is not None:
+            hdr += self.grain[fi % 6][..., None]
         return cv2.convertScaleAbs(hdr, alpha=255.0)
 
     def splat_streaks(self, x0, y0, x1, y1, w, col, ww, hh):
@@ -916,14 +919,16 @@ def main():
     lst = os.path.join(HERE, "build", "segs.txt")
     with open(lst, "w") as f:
         f.writelines("file '%s'\n" % s for s in segs)
-    out = args.out
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst]
-    if args.audio:
-        cmd += ["-ss", "%.3f" % (fa / FPS), "-i", args.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "256k",
-                "-shortest"]
-    cmd += ["-c:v", "libx264", "-preset", "slow", "-crf", "19", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
-    subprocess.check_call(cmd)
-    print("写出", out)
+    # 主版 1080p，外加一个便于在手机 / 聊天软件里分享的 720p 版
+    for out, extra in ((args.out, ["-crf", "22"]),
+                       (args.out.replace(".mp4", "_720p.mp4"), ["-vf", "scale=1280:720:flags=lanczos", "-crf", "23"])):
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst]
+        if args.audio:
+            cmd += ["-ss", "%.3f" % (fa / FPS), "-i", args.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac",
+                    "-b:a", "256k", "-shortest"]
+        cmd += ["-c:v", "libx264", "-preset", "slow"] + extra + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
+        subprocess.check_call(cmd)
+        print("写出", out)
 
 
 if __name__ == "__main__":
