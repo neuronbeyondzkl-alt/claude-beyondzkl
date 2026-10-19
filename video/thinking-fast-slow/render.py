@@ -925,7 +925,7 @@ def main():
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst]
         if args.audio:
             cmd += ["-ss", "%.3f" % (fa / FPS), "-i", args.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac",
-                    "-b:a", "256k", "-shortest"]
+                    "-b:a", "320k", "-shortest"]
         cmd += ["-c:v", "libx264", "-preset", "slow"] + extra + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
         subprocess.check_call(cmd)
         print("写出", out)

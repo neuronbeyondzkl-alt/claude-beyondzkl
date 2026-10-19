@@ -556,7 +556,11 @@ class Mixer:
         return self.bus[name]
 
     def add(self, name, x, t, gain=1.0, pan=0.0, hall=0.0, room=0.0):
-        x = pan2(x, pan) if x.ndim == 1 else x
+        x = pan2(x, pan) if x.ndim == 1 else x.copy()
+        # 0.75 ms 起音斜坡 + 5 ms 收尾斜坡：噪声类起音第一个采样可能很大，不处理会产生咔哒声
+        ka, kr = min(len(x), 36), min(len(x), 240)
+        x[:ka] *= np.linspace(0, 1, ka)[:, None]
+        x[-kr:] *= np.linspace(1, 0, kr)[:, None]
         i = ns(t)
         if i >= self.n:
             return
@@ -664,6 +668,8 @@ def gate_curve(n):
         r = ns(0.006)
         g[i:j] = 0.0
         g[max(0, i - r):i] = np.minimum(g[max(0, i - r):i], np.linspace(1, 0, i - max(0, i - r)))
+        u = ns(0.004)
+        g[j:j + u] = np.minimum(g[j:j + u], np.linspace(0, 1, u))
     return g
 
 
@@ -950,7 +956,7 @@ def build(out_path):
     thr = ref * 10 ** (-10 / 20)
     gr = np.where(env > thr, (thr / env) ** 0.5, 1.0)
     mix *= gr[:, None]
-    target = -12.0
+    target = -14.0
     gain = 1.0
     for it in range(4):
         y = limiter(np.tanh(mix * gain * 1.1) / 1.1)
