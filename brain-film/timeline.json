@@ -1,0 +1,19 @@
+{
+  "fps": 30,
+  "bpm": 120,
+  "duration": 132,
+  "sections": [
+    { "name": "intro",    "start": 0,   "end": 16 },
+    { "name": "myths",    "start": 16,  "end": 40 },
+    { "name": "turn",     "start": 40,  "end": 48 },
+    { "name": "drop",     "start": 48,  "end": 56 },
+    { "name": "abilities","start": 56,  "end": 88 },
+    { "name": "recharge", "start": 88,  "end": 96 },
+    { "name": "build",    "start": 96,  "end": 104 },
+    { "name": "climax",   "start": 104, "end": 120 },
+    { "name": "outro",    "start": 120, "end": 132 }
+  ],
+  "hits": [4, 16, 18, 26, 34, 52, 56, 64, 72, 80, 108, 112],
+  "bigHits": [48, 104, 116, 120],
+  "drums": [[16, 40, 0.45], [48, 88, 1.0], [100, 103.75, 0.5], [104, 120, 1.0]]
+}
