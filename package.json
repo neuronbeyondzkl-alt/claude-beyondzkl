@@ -7,7 +7,9 @@
   "scripts": {
     "start": "npx --yes http-server -p 8080 -c-1 . -o /index.dev.html",
     "build": "node tools/build.mjs",
-    "vendor": "esbuild tools/three-entry.js --bundle --format=esm --minify --legal-comments=eof --outfile=assets/js/vendor/three.bundle.min.js"
+    "vendor": "esbuild tools/three-entry.js --bundle --format=esm --minify --legal-comments=eof --outfile=assets/js/vendor/three.bundle.min.js",
+    "home3d:start": "npx --yes http-server -p 8080 -c-1 . -o /home3d/index.dev.html",
+    "home3d:build": "node tools/build-home3d.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.12",

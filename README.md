@@ -2,6 +2,8 @@
 
 一个以海洋生物为主题的滚动粒子网页，交互形式参考 [usta.agency](https://usta.agency)。页面从夜海的“蓝眼泪”出发，一路下潜到 4,000 米的无光层。随着滚动，四万颗低饱和荧光粒子依次聚散成 11 种海洋生物，每一页都配有中文说明，并配有随水深变化的实时生成配乐。
 
+> 本仓库里还有另一个页面：**[意式轻奢 · 3D 户型漫游](home3d/README.md)**（`home3d/`）——按户型图比例搭建的可交互 3D 家居网页，双击 `home3d/index.html` 即可打开。
+
 | 顺序 | 生物 | 英文标题 | 水层 |
 |---|---|---|---|
 | 00 | 海面（首页） | INTO THE DEEP | 透光层 |
@@ -152,6 +154,8 @@ assets/js/vendor/three.bundle.min.js   精简打包的 three.js r186（含 Bloom
 assets/fonts/                  Oswald / Montserrat / Cormorant Garamond（woff2 + OFL 许可）
 tools/build.mjs                生成单文件版 index.html
 tools/three-entry.js           重新打包 three.js 的入口（npm run vendor）
+home3d/                        另一个页面：3D 户型漫游（说明见 home3d/README.md）
+tools/build-home3d.mjs         生成 home3d/index.html 单文件版（npm run home3d:build）
 ```
 
 ## 想加一种新生物？
