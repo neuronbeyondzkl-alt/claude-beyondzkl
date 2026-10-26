@@ -111,10 +111,14 @@ async function video(opts) {
   await ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', silent]).done;
   console.log('frames rendered in', ((Date.now() - started) / 1000).toFixed(0), 's');
   if (opts.from == null && opts.to == null) {
+    // Two-pass at a fixed bitrate: particles + grain make CRF files balloon past
+    // GitHub's 100 MB limit; 4.6 Mbps lands around 75 MB with no visible banding.
     const out = path.join(BUILD, 'video.mp4');
+    const v = ['-c:v', 'libx264', '-preset', 'slow', '-b:v', '4600k', '-tune', 'film', '-pix_fmt', 'yuv420p',
+      '-passlogfile', path.join(BUILD, 'x264')];
+    await ffmpeg(['-i', silent, ...v, '-pass', '1', '-an', '-f', 'null', '/dev/null']).done;
     await ffmpeg(['-i', silent, '-i', path.join(BUILD, 'score.wav'),
-      '-c:v', 'libx264', '-preset', 'slow', '-crf', '19', '-tune', 'film', '-pix_fmt', 'yuv420p', '-profile:v', 'high',
-      '-x264-params', 'aq-mode=3:deblock=-1,-1',
+      ...v, '-pass', '2', '-maxrate', '9000k', '-bufsize', '12000k', '-profile:v', 'high',
       '-c:a', 'aac', '-b:a', '256k', '-ar', '44100',
       '-movflags', '+faststart', '-shortest', out]).done;
     console.log('wrote', out);
