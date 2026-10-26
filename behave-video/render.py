@@ -561,7 +561,7 @@ def main():
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--stills", type=str, default="")
     ap.add_argument("--workers", type=int, default=max(1, os.cpu_count() - 1))
-    ap.add_argument("--crf", type=int, default=20)
+    ap.add_argument("--crf", type=int, default=26)
     ap.add_argument("--out", type=str, default=os.path.join(HERE, "behave.mp4"))
     args = ap.parse_args()
     set_scale(args.scale)
