@@ -164,3 +164,11 @@ tools/three-entry.js           重新打包 three.js 的入口（npm run vendor�
 ## 文案事实依据
 
 文案是科普级的概括，主要依据：IUCN 红色名录（巨型蝠鲼、蓝鲸、中国鲎的濒危等级）、《国家重点保护野生动物名录》（2021，中国鲎为二级）、2008 年诺贝尔化学奖（GFP）、Jensen 等（2018，*Current Biology*，大堡礁北部绿海龟幼龟高度雌性化）、Ari 与 D'Agostino（2016，*Journal of Ethology*，蝠鲼镜像实验，属初步证据）、Seabed 2030（2024 年约 26% 的海底完成现代精细测绘）。水层横幅：透光层约 0–200 m，弱光层约 200–1,000 m，无光层约 1,000–4,000 m，深渊层 4,000 m 以下（水压约每 10 m 增加 1 个大气压）。
+
+## 另一个作品：Orbit 概念动效片（`orbit/index.html`）
+
+单文件 HTML（Tailwind CSS Play CDN + GSAP 3.12.5 + Canvas 2D），复刻暗黑风效率 App「Orbit」的概念演示片：纯黑背景、玻璃拟态卡片、`#4F6BFF` 辉光与 LED 点阵，一颗带拖尾的蓝白光点串起五个分镜（Level 滑块 → Priority 矩阵 → Voice 录入 → Countdown 胶囊 → Heatmap 与片尾点阵球），约 39 秒自动循环。
+
+- 需要联网（Tailwind、GSAP 与字体都从 CDN 加载），双击即可打开。
+- 空格暂停 / 播放，← / → 切换分镜，R 从头重播；底部进度条可点击跳转。
+- 系统开启“减少动态效果”时，页面停在片尾画面，点播放再开始。
