@@ -1,0 +1,76 @@
+{
+  "bpm": 120,
+  "duration": 124.0,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "cues": [
+    {"t": 0.5,   "d": 3.2, "kind": "main", "y": 880, "sfx": "glint", "zh": "四百年来，科学界一直坚信：", "en": "For four hundred years, science believed..."},
+    {"t": 4.0,   "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "成年大脑，是一台零件固定的机器", "en": "The adult brain is a machine. Hardwired. Fixed."},
+    {"t": 6.0,   "d": 1.5, "kind": "main", "y": 880, "sfx": "glint", "zh": "一旦损坏，就永远无法修复", "en": "Once damaged, beyond repair."},
+
+    {"t": 8.0,   "d": 1.7, "kind": "hero", "y": 520, "zh": "错了。", "en": "WRONG."},
+    {"t": 10.5,  "d": 4.1, "kind": "title", "y": 470, "zh": "重塑大脑"},
+    {"t": 11.0,  "d": 3.6, "kind": "enHero", "y": 610, "sfx": "glint", "en": "THE BRAIN THAT CHANGES ITSELF"},
+    {"t": 12.0,  "d": 2.6, "kind": "tag", "y": 690, "sfx": "glint", "zh": "诺曼·多伊奇 著　·　NORMAN DOIDGE"},
+    {"t": 13.0,  "d": 1.6, "kind": "tag", "y": 742, "zh": "来自脑科学前沿的生命奇迹", "dim": true},
+
+    {"t": 16.0,  "d": 1.85, "kind": "hero", "y": 870, "zh": "神经可塑性", "en": "NEUROPLASTICITY"},
+    {"t": 18.0,  "d": 3.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "大脑会因经验、行为与思想，改变自身的结构与功能", "en": "The brain rewires its own structure and function through experience, action and thought."},
+    {"t": 22.0,  "d": 1.75, "kind": "main", "y": 880, "sfx": "glint", "zh": "终其一生，从未停止。", "en": "Throughout life. It never stops."},
+
+    {"t": 24.0,  "d": 7.7, "kind": "tag", "y": 150, "zh": "赫布定律　·　HEBB'S RULE"},
+    {"t": 24.0,  "d": 3.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "一起放电的神经元，会连接在一起", "en": "Neurons that fire together, wire together."},
+    {"t": 28.0,  "d": 3.7, "kind": "main", "y": 880, "sfx": "glint", "zh": "反复激活的连接，会变得越来越强", "en": "What is repeated is reinforced."},
+
+    {"t": 32.0,  "d": 7.75, "kind": "tag", "y": 150, "zh": "CASE 01　·　感觉替代　SENSORY SUBSTITUTION"},
+    {"t": 32.0,  "d": 1.85, "kind": "main", "y": 880, "big": true, "zh": "永远在坠落的女人", "en": "The woman perpetually falling"},
+    {"t": 34.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "一种抗生素，毁掉了她的前庭平衡系统", "en": "An antibiotic destroyed her vestibular system."},
+    {"t": 36.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "舌头上的电极贴片，让大脑重新学会平衡", "en": "A sensor on her tongue taught her brain to balance again."},
+    {"t": 38.0,  "d": 1.75, "kind": "main", "y": 880, "sfx": "glint", "zh": "“我们用大脑看，而不是用眼睛。”", "en": "“We see with our brains, not with our eyes.”  —  Paul Bach-y-Rita"},
+
+    {"t": 40.0,  "d": 7.75, "kind": "tag", "y": 150, "zh": "CASE 02　·　大脑地图　BRAIN MAPS"},
+    {"t": 40.0,  "d": 1.85, "kind": "main", "y": 880, "zh": "大脑地图，不是固定的疆域", "en": "Brain maps are not fixed territories."},
+    {"t": 42.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "它们彼此竞争，争夺每一寸皮层", "en": "They compete for every inch of cortex.  —  Michael Merzenich"},
+    {"t": 44.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "练得越多，占据的版图就越大", "en": "The more you practice, the more territory it claims."},
+    {"t": 46.0,  "d": 1.75, "kind": "hero", "y": 870, "zh": "用进废退", "en": "USE IT OR LOSE IT"},
+
+    {"t": 48.0,  "d": 7.75, "kind": "tag", "y": 150, "zh": "CASE 03　·　中风之后　AFTER THE STROKE"},
+    {"t": 48.0,  "d": 1.85, "kind": "main", "y": 880, "zh": "65岁，佩德罗中风：半身瘫痪，无法言语", "en": "At 65, Pedro Bach-y-Rita had a stroke: half paralyzed, unable to speak."},
+    {"t": 50.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "儿子陪他从爬行开始，一寸一寸重新学习", "en": "His son made him start over — from crawling on the floor."},
+    {"t": 52.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "他重返讲台；72岁时，在登山途中离世", "en": "He went back to teaching, and died at 72 while climbing a mountain."},
+    {"t": 54.0,  "d": 1.85, "kind": "main", "y": 880, "zh": "尸检显示：他从大脑皮层通往脊髓的神经，97%已被摧毁", "en": "Autopsy: 97% of the nerves from his cortex to his spine had been destroyed."},
+
+    {"t": 56.0,  "d": 7.75, "kind": "tag", "y": 150, "zh": "CASE 04　·　想象的力量　IMAGINATION"},
+    {"t": 56.0,  "d": 1.85, "kind": "main", "y": 880, "zh": "两组人，练习同一段钢琴曲", "en": "Two groups learned the same piano sequence."},
+    {"t": 58.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "一组真弹，一组只在脑中想象", "en": "One group played it. The other only imagined playing."},
+    {"t": 60.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "五天后，两组的运动皮层出现了相似的改变", "en": "After five days, both showed similar motor-cortex changes.  —  Alvaro Pascual-Leone"},
+    {"t": 62.0,  "d": 1.75, "kind": "hero", "y": 870, "zh": "思想，本身就能重塑大脑", "en": "THOUGHT ITSELF CHANGES THE BRAIN"},
+
+    {"t": 64.0,  "d": 1.85, "kind": "main", "y": 870, "big": true, "zh": "如果大脑能够改变自己——", "en": "If the brain can change itself —"},
+    {"t": 66.0,  "d": 1.45, "kind": "hero", "y": 860, "zh": "还有什么，是不能改变的？", "en": "WHAT CAN'T BE CHANGED?"},
+
+    {"t": 68.0,  "d": 3.8, "kind": "card", "y": 840, "label": "疼痛　PAIN", "zh": "幻肢痛", "sub": "一面镜子“骗”过大脑，幻肢痛随之缓解", "en": "A mirror tricks the brain, and phantom pain eases.  —  V.S. Ramachandran"},
+    {"t": 72.0,  "d": 3.8, "kind": "card", "y": 840, "label": "强迫　OCD", "zh": "强迫症", "sub": "每一次主动转移注意，都在铺设新的神经通路", "en": "Each time you refocus, you pave a new circuit.  —  Jeffrey Schwartz"},
+    {"t": 76.0,  "d": 3.8, "kind": "card", "y": 840, "label": "半脑　HALF A BRAIN", "zh": "半个大脑", "sub": "她生来没有左脑，右脑接管了它的大部分工作", "en": "Born without a left hemisphere, her right brain took over.  —  Michelle Mack"},
+    {"t": 80.0,  "d": 3.8, "kind": "card", "y": 840, "label": "学习障碍　LEARNING", "zh": "自我重建", "sub": "她为自己设计训练，重建大脑最薄弱的部分", "en": "She designed exercises to rebuild her weakest functions.  —  Barbara Arrowsmith-Young"},
+    {"t": 84.0,  "d": 3.8, "kind": "card", "y": 840, "label": "新生　NEUROGENESIS", "zh": "神经新生", "sub": "成年人的大脑，依然可以长出新的神经元", "en": "Even the adult brain can grow new neurons.  —  Fred Gage"},
+    {"t": 88.0,  "d": 3.75, "kind": "card", "y": 840, "label": "创伤　TRAUMA", "zh": "化鬼为祖", "sub": "把纠缠你的“幽灵”，变成安息的“祖先”", "en": "Turning our ghosts into ancestors."},
+
+    {"t": 92.0,  "d": 1.85, "kind": "hero", "y": 870, "zh": "可塑性悖论", "en": "THE PLASTIC PARADOX"},
+    {"t": 94.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "让我们灵活改变的力量，也能让我们固执僵化", "en": "The plasticity that lets us change can also make us rigid."},
+    {"t": 96.0,  "d": 1.85, "kind": "main", "y": 880, "sfx": "glint", "zh": "就像雪坡上的雪橇：走得越多，轨迹越深", "en": "Like sledding down a snowy hill: the more you ride a track, the deeper it gets."},
+    {"t": 98.0,  "d": 1.6, "kind": "main", "y": 880, "sfx": "glint", "zh": "所以，请选择你要重复的事。", "en": "So choose what you repeat."},
+
+    {"t": 100.0, "d": 3.8, "kind": "hero", "y": 880, "zh": "你的大脑，不是你的宿命", "en": "YOUR BRAIN IS NOT YOUR DESTINY"},
+    {"t": 104.0, "d": 1.85, "kind": "main", "y": 880, "big": true, "zh": "每一个念头，每一次练习", "en": "Every thought. Every practice."},
+    {"t": 106.0, "d": 1.85, "kind": "main", "y": 880, "big": true, "zh": "都在重新雕刻你自己", "en": "is sculpting who you are."},
+    {"t": 108.0, "d": 3.8, "kind": "hero", "y": 900, "zh": "改变，是大脑的天性", "en": "CHANGE IS THE NATURE OF THE BRAIN"},
+    {"t": 112.0, "d": 3.4, "kind": "hero", "y": 900, "zh": "从今天起，重塑你的大脑", "en": "START REWIRING. TODAY."},
+
+    {"t": 116.0, "d": 7.4, "kind": "title", "y": 460, "zh": "重塑大脑"},
+    {"t": 116.0, "d": 7.4, "kind": "enHero", "y": 600, "en": "THE BRAIN THAT CHANGES ITSELF"},
+    {"t": 117.0, "d": 6.4, "kind": "tag", "y": 680, "sfx": "glint", "zh": "NORMAN DOIDGE　·　诺曼·多伊奇"},
+    {"t": 118.5, "d": 4.9, "kind": "credit", "y": 1010, "zh": "读书浓缩视频 · 内容依据原书整理 · 画面与配乐均为程序生成"}
+  ]
+}
