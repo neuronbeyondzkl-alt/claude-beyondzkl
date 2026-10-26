@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>轻奢四居 3D 户型</title>
+<!--BUILD-NOTE-->
+<meta name="description" content="按施工平面图 1:1 搭建的四室两厅两卫三维户型：意式轻奢真实材质、白模与线框三种样式，昼夜切换，房间与家具逐一讲解，可进入任意房间漫游，并一键切换到带尺寸标注的平面图。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@500;600&display=swap">
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="gl" tabindex="0" aria-label="三维户型模型。拖动旋转，滚轮缩放，点击房间或家具查看讲解。"></canvas>
+  <svg id="planSvg" aria-hidden="true"></svg>
+  <div id="tags"></div>
+
+  <header class="bar">
+    <div class="brand">
+      <h1>轻奢四居 <i>Casa a Quattro Stanze</i></h1>
+      <p>四室两厅两卫<span class="hide-sm"> · 轴网 <span class="num">13350 × 8600</span> mm</span> · 套内 <b id="totalArea">—</b> m²</p>
+    </div>
+    <nav class="tools" aria-label="视图工具">
+      <div class="seg" role="group" aria-label="模型样式">
+        <button type="button" data-mode="real" aria-pressed="true">真实材质</button>
+        <button type="button" data-mode="white" aria-pressed="false">白模</button>
+        <button type="button" data-mode="wire" aria-pressed="false">线框</button>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="btnPlan" class="tool tool--primary" aria-pressed="false" aria-label="切换平面图" title="平面图（P）">
+        <svg viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 8h6V2M8 8v6M11 8h3"/></svg><span class="lbl">平面图</span>
+      </button>
+      <button type="button" id="btnNight" class="tool" aria-pressed="false" aria-label="切换昼夜" title="昼夜（N）">
+        <svg viewBox="0 0 16 16"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z"/></svg><span class="lbl">日景</span>
+      </button>
+      <button type="button" id="btnFurn" class="tool" aria-pressed="true" aria-label="显示或隐藏家具" title="家具（F）">
+        <svg viewBox="0 0 16 16"><path d="M3 9V6.5A1.5 1.5 0 0 1 4.5 5h7A1.5 1.5 0 0 1 13 6.5V9M2 9h12v3H2zM3 12v1.5M13 12v1.5"/></svg><span class="lbl">家具</span>
+      </button>
+      <button type="button" id="btnCut" class="tool" aria-pressed="false" aria-label="墙体剖切到 1.2 米" title="半高墙（C）">
+        <svg viewBox="0 0 16 16"><path d="M2 14h12M3 14V7h10v7M3 7l2-3h6l2 3" stroke-dasharray="0"/><path d="M1 9.5h14" stroke-dasharray="2 1.6"/></svg><span class="lbl">半高墙</span>
+      </button>
+      <button type="button" id="btnLabels" class="tool" aria-pressed="true" aria-label="显示或隐藏房间标签" title="标签（L）">
+        <svg viewBox="0 0 16 16"><path d="M2.5 3.5h7l4 4.5-4 4.5h-7z"/><circle cx="5.5" cy="8" r="1"/></svg><span class="lbl">标签</span>
+      </button>
+      <button type="button" id="btnReset" class="tool" aria-label="复位视角" title="复位（R）">
+        <svg viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.5h2.5"/></svg><span class="lbl">复位</span>
+      </button>
+    </nav>
+  </header>
+
+  <aside id="rooms" class="rooms" aria-label="房间列表">
+    <div class="rooms__head"><h2>房间</h2><span>Stanze</span></div>
+    <ol id="roomList"></ol>
+    <p class="rooms__foot">点选房间查看讲解；卡片里可“单独查看”或“进入漫游”。</p>
+  </aside>
+  <button type="button" id="roomsToggle" class="rooms__toggle" aria-expanded="false" aria-controls="rooms">房间列表</button>
+
+  <section id="info" class="info" aria-live="polite" hidden>
+    <button type="button" id="infoClose" class="info__close" aria-label="关闭讲解">✕</button>
+    <div id="infoBody"></div>
+  </section>
+
+  <div id="isoBar" class="isobar" hidden>单独查看：<b id="isoName"></b><button type="button" id="isoExit">显示全屋</button></div>
+
+  <div class="plan-legend" aria-hidden="true">
+    <span><i class="lg-struct"></i>钢筋混凝土墙柱</span>
+    <span><i class="lg-part"></i>轻质隔墙</span>
+    <span><i class="lg-shaft"></i>管井</span>
+    <span>单位 mm</span>
+  </div>
+
+  <div id="walkHud" class="walk" hidden>
+    <div class="walkbar">漫游中 · <b id="walkRoom">—</b><button type="button" id="walkExit">退出漫游（Esc）</button></div>
+    <div class="minimap" aria-hidden="true"><svg id="miniMap"></svg></div>
+    <div class="walk-help">拖动 环视 · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 方向键 行走<br>按住 <kbd>Shift</kbd> 加速 · 点击地面 走过去 · 点击门 开关</div>
+    <div id="pad" class="pad">
+      <span></span>
+      <button type="button" data-pad="f:1" aria-label="前进">▲</button>
+      <span></span>
+      <button type="button" data-pad="s:-1" aria-label="左移">◀</button>
+      <button type="button" data-pad="f:-1" aria-label="后退">▼</button>
+      <button type="button" data-pad="s:1" aria-label="右移">▶</button>
+    </div>
+  </div>
+
+  <div class="compass" aria-hidden="true">
+    <svg id="compassNeedle" viewBox="-20 -20 40 40"><path class="needle-n" d="M0 -15 L5 0 L-5 0 Z"/><path class="needle-s" d="M0 15 L5 0 L-5 0 Z"/><text class="n" x="0" y="-15.5" text-anchor="middle">N</text></svg>
+  </div>
+  <p class="hint">拖动旋转 · 右键或双指平移 · 滚轮缩放 · 点击房间或家具查看讲解 · 点击门可开关</p>
+  <div id="toast" class="toast" role="status"></div>
+
+  <div id="loader" role="status" aria-live="polite">
+    <div class="loader__inner">
+      <p class="loader__title">轻奢四居</p>
+      <p class="loader__en">Casa a Quattro Stanze</p>
+      <div class="loader__track"><span id="loadBar"></span></div>
+      <p id="loadText">读取户型图数据</p>
+    </div>
+  </div>
+</div>
+<script type="importmap">{"imports":{"three":"../node_modules/three/build/three.module.js","three/addons/":"../node_modules/three/examples/jsm/"}}</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
