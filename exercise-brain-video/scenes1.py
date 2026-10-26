@@ -278,8 +278,8 @@ def _chapter_aux():
                 c=rng.random(1200), amp=rng.uniform(150, 520, 1200))
 
 
-def chapter(fr, t, a, num, cn, en):
-    k = env(t, a, a + 4.2, 0.6, 0.7)
+def chapter(fr, t, a, num, cn, en, dur=4.2):
+    k = env(t, a, a + dur, 0.6, 0.7)
     if k <= 0:
         return
     A = _chapter_aux()
@@ -291,11 +291,11 @@ def chapter(fr, t, a, num, cn, en):
     y = 602 + A["side"] * A["amp"] * (1 - f) ** 2
     fr.pts(A["x"], y, 0.3 * k * f * (1 - f) * 4 * (np.abs(A["x"] - 960) < L + 40), ramp(0.3 + 0.6 * A["c"]), 0)
     dust(fr, t, 0.45 * k)
-    text_cue(fr, t, num, "med", 28, 960, 395, a + 0.2, a + 3.6, col=D[40], anchor="c", tracking=10, glow=0.3,
+    text_cue(fr, t, num, "med", 28, 960, 395, a + 0.2, a + dur - 0.6, col=D[40], anchor="c", tracking=10, glow=0.3,
              shadow=0)
-    text_cue(fr, t, cn, "serif", 118, 960, 438, a + 0.4, a + 3.6, col=D_WHITE, anchor="c", tracking=10, glow=0.5,
+    text_cue(fr, t, cn, "serif", 118, 960, 438, a + 0.4, a + dur - 0.6, col=D_WHITE, anchor="c", tracking=10, glow=0.5,
              shadow=0)
-    text_cue(fr, t, en, "cinzel", 30, 960, 628, a + 0.7, a + 3.6, col=D[30], anchor="c", tracking=14, glow=0.3,
+    text_cue(fr, t, en, "cinzel", 30, 960, 628, a + 0.7, a + dur - 0.6, col=D[30], anchor="c", tracking=14, glow=0.3,
              shadow=0)
     fr.look["streak"] = max(fr.look["streak"], 0.6 * k)
 

@@ -173,7 +173,7 @@ def _statics():
     return vig[..., None], fog.astype(np.float32), grain, flash
 
 
-def _radial_blur(img, center, strength, samples=10):
+def _radial_blur(img, center, strength, samples=18):
     h, w = img.shape[:2]
     cx, cy = center[0] * w / W, center[1] * h / H
     acc = img.copy()
@@ -207,7 +207,7 @@ def finish(fr):
         s = cv2.GaussianBlur(s, (0, 0), sigmaX=55, sigmaY=0.7)
         bq += s.mean(axis=2, keepdims=True) * C[40][None, None, :] * (lk["streak"] * 6.0)
     if lk["rays"] > 0:
-        bq += _radial_blur(np.maximum(q - 0.05, 0), lk["rays_center"], 0.45) * lk["rays"]
+        bq += _radial_blur(cv2.GaussianBlur(np.maximum(q - 0.05, 0), (0, 0), 2.0), lk["rays_center"], 0.4) * lk["rays"]
     img += _up(bq) * lk["bloom"]
 
     vig, fog, grain, flash = _statics()
